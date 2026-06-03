@@ -10,7 +10,15 @@
 .path-mod-studentattendance .generaltable td {
     text-align: center;
     vertical-align: middle;
-    /* padding: 12px 8px; */
+    padding: 0px;
+}
+
+.generaltable th{
+    padding: 0px;
+}
+
+.generaltable td {
+    padding: 0px;
 }
 
 .path-mod-studentattendance .generaltable td:first-child {
@@ -36,7 +44,7 @@
 .path-mod-studentattendance .generaltable .checkbox-cell {
     vertical-align: middle;
     text-align: center;
-    /* padding: 10px 5px; */
+    padding: 10px;
 }
 
 /* Эффект при наведении на ячейку с чекбоксом */
