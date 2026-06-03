@@ -14,32 +14,76 @@ class mod_studentattendance_mod_form extends moodleform_mod {
 
         $this->standard_intro_elements();
 
+        // Обязательные даты семестра
         $mform->addElement('date_selector', 'semesterstart', get_string('semesterstart', 'studentattendance'));
         $mform->setDefault('semesterstart', time());
+        $mform->addRule('semesterstart', null, 'required', null, 'client');
 
         $mform->addElement('date_selector', 'semesterend', get_string('semesterend', 'studentattendance'));
         $mform->setDefault('semesterend', strtotime('+4 months'));
+        $mform->addRule('semesterend', null, 'required', null, 'client');
 
-        $mform->addElement('header', 'weekdaysheader', get_string('weekdays', 'studentattendance'));
+        // ОДИН ОБЩИЙ БЛОК ДЛЯ ЧИСЛИТЕЛЯ И ЗНАМЕНАТЕЛЯ
+        $mform->addElement('header', 'scheduleheader', get_string('schedule_settings', 'studentattendance'));
         
-        $days = array(1 => 'weekday1', 2 => 'weekday2', 3 => 'weekday3', 4 => 'weekday4', 5 => 'weekday5', 6 => 'weekday6', 7 => 'weekday7');
-        $group = array();
-        foreach ($days as $key => $day) {
-            $group[] = $mform->createElement('checkbox', $day, '', get_string($day, 'studentattendance'));
+        // Группа числителя
+        $num_group = array();
+        for ($i = 1; $i <= 5; $i++) {
+            $day_name = get_string('weekday' . $i, 'studentattendance');
+            $num_group[] = $mform->createElement('checkbox', 'num_weekday' . $i, '', $day_name);
         }
-        $mform->addGroup($group, 'weekdaysgroup', '', array(' '), false);
+        $mform->addGroup($num_group, 'num_weekdays_group', 
+            html_writer::tag('strong', get_string('numeratorweek', 'studentattendance')), 
+            array(' '), false);
+        $mform->addHelpButton('num_weekdays_group', 'numeratorweek', 'studentattendance');
+
+        // Группа знаменателя
+        $den_group = array();
+        for ($i = 1; $i <= 5; $i++) {
+            $day_name = get_string('weekday' . $i, 'studentattendance');
+            $den_group[] = $mform->createElement('checkbox', 'den_weekday' . $i, '', $day_name);
+        }
+        $mform->addGroup($den_group, 'den_weekdays_group', 
+            html_writer::tag('strong', get_string('denominatorweek', 'studentattendance')), 
+            array(' '), false);
+        $mform->addHelpButton('den_weekdays_group', 'denominatorweek', 'studentattendance');
+
+        // ВАЛИДАЦИЯ: хотя бы один день должен быть выбран в каждой группе
+        $mform->addRule('num_weekdays_group', get_string('error_at_least_one_day', 'studentattendance'), 
+            'callback', 'validate_weekdays_num', 'client');
+        $mform->addRule('den_weekdays_group', get_string('error_at_least_one_day', 'studentattendance'), 
+            'callback', 'validate_weekdays_den', 'client');
 
         $this->standard_coursemodule_elements();
         $this->add_action_buttons();
     }
 
+    // Кастомная валидация для группы чекбоксов
+    public static function validate_weekdays_num($value) {
+        foreach ($value as $val) {
+            if (!empty($val)) return true;
+        }
+        return false;
+    }
+
+    public static function validate_weekdays_den($value) {
+        foreach ($value as $val) {
+            if (!empty($val)) return true;
+        }
+        return false;
+    }
+
     public function data_preprocessing(&$default_values) {
-        if (!empty($default_values['weekdays'])) {
-            $weekdays = str_split($default_values['weekdays']);
-            foreach ($weekdays as $index => $val) {
-                if ($val == '1') {
-                    $default_values['weekday' . ($index + 1)] = 1;
-                }
+        if (!empty($default_values['weekdays_numerator'])) {
+            $days = str_split($default_values['weekdays_numerator']);
+            foreach ($days as $index => $val) {
+                if ($val == '1') $default_values['num_weekday' . ($index + 1)] = 1;
+            }
+        }
+        if (!empty($default_values['weekdays_denominator'])) {
+            $days = str_split($default_values['weekdays_denominator']);
+            foreach ($days as $index => $val) {
+                if ($val == '1') $default_values['den_weekday' . ($index + 1)] = 1;
             }
         }
     }
@@ -47,11 +91,13 @@ class mod_studentattendance_mod_form extends moodleform_mod {
     public function get_data() {
         $data = parent::get_data();
         if ($data) {
-            $weekdays = '';
-            for ($i = 1; $i <= 7; $i++) {
-                $weekdays .= isset($data->{'weekday' . $i}) ? '1' : '0';
+            $num = ''; $den = '';
+            for ($i = 1; $i <= 5; $i++) {
+                $num .= isset($data->{'num_weekday' . $i}) ? '1' : '0';
+                $den .= isset($data->{'den_weekday' . $i}) ? '1' : '0';
             }
-            $data->weekdays = $weekdays;
+            $data->weekdays_numerator = $num;
+            $data->weekdays_denominator = $den;
         }
         return $data;
     }

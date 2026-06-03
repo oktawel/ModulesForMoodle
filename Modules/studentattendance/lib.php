@@ -19,15 +19,25 @@ function studentattendance_add_instance($data, $mform) {
     $data->timecreated = time();
     $data->timemodified = time();
     
-    $weekdays = '';
-    for ($i = 1; $i <= 7; $i++) {
-        $weekdays .= isset($data->{'weekday' . $i}) ? '1' : '0';
+    // Формируем строки дней недели из данных формы
+    $num_weekdays = '';
+    $den_weekdays = '';
+    for ($i = 1; $i <= 5; $i++) {
+        $num_weekdays .= isset($data->{'num_weekday' . $i}) ? '1' : '0';
+        $den_weekdays .= isset($data->{'den_weekday' . $i}) ? '1' : '0';
     }
-    $data->weekdays = $weekdays;
+    $data->weekdays_numerator = $num_weekdays;
+    $data->weekdays_denominator = $den_weekdays;
 
     $id = $DB->insert_record('studentattendance', $data);
     
-    mod_studentattendance\manager::generate_sessions($id, $data->semesterstart, $data->semesterend, $weekdays);
+    mod_studentattendance\manager::generate_sessions(
+        $id, 
+        $data->semesterstart, 
+        $data->semesterend, 
+        $num_weekdays, 
+        $den_weekdays
+    );
     
     return $id;
 }
@@ -37,21 +47,31 @@ function studentattendance_update_instance($data, $mform) {
     $data->timemodified = time();
     $data->id = $data->instance;
 
-    $weekdays = '';
-    for ($i = 1; $i <= 7; $i++) {
-        $weekdays .= isset($data->{'weekday' . $i}) ? '1' : '0';
+    $num_weekdays = '';
+    $den_weekdays = '';
+    for ($i = 1; $i <= 5; $i++) {
+        $num_weekdays .= isset($data->{'num_weekday' . $i}) ? '1' : '0';
+        $den_weekdays .= isset($data->{'den_weekday' . $i}) ? '1' : '0';
     }
-    $data->weekdays = $weekdays;
+    $data->weekdays_numerator = $num_weekdays;
+    $data->weekdays_denominator = $den_weekdays;
 
     $DB->update_record('studentattendance', $data);
     
+    // Удаляем старые сессии и записи, генерируем заново
     $sessions = $DB->get_records('studentattendance_sessions', array('attendanceid' => $data->id));
     foreach ($sessions as $session) {
         $DB->delete_records('studentattendance_records', array('sessionid' => $session->id));
     }
     $DB->delete_records('studentattendance_sessions', array('attendanceid' => $data->id));
     
-    mod_studentattendance\manager::generate_sessions($data->id, $data->semesterstart, $data->semesterend, $weekdays);
+    mod_studentattendance\manager::generate_sessions(
+        $data->id, 
+        $data->semesterstart, 
+        $data->semesterend, 
+        $num_weekdays, 
+        $den_weekdays
+    );
     
     return true;
 }
