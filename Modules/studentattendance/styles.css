@@ -10,9 +10,108 @@
 .path-mod-studentattendance .generaltable td {
     text-align: center;
     vertical-align: middle;
+    padding: 12px 8px; /* Увеличил отступы для комфорта */
 }
 
 .path-mod-studentattendance .generaltable td:first-child {
     text-align: left;
+    font-weight: bold;
+}
+
+/* ===== УВЕЛИЧЕННЫЕ ЧЕКБОКСЫ (УСИЛЕННЫЙ СЕЛЕКТОР) ===== */
+.path-mod-studentattendance .generaltable input[type="checkbox"].form-check-input,
+.path-mod-studentattendance .generaltable input[type="checkbox"].attendance-checkbox {
+    transform: scale(1.4);
+    margin: 0 auto;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    display: inline-block;
+    vertical-align: middle;
+    position: relative;
+    top: 0;
+}
+
+/* Дополнительное увеличение для мышки */
+.path-mod-studentattendance .generaltable .checkbox-cell {
+    vertical-align: middle;
+    text-align: center;
+    padding: 10px 5px;
+}
+
+/* Эффект при наведении на ячейку с чекбоксом */
+.path-mod-studentattendance .generaltable .checkbox-cell:hover {
+    background-color: rgba(72, 0, 180, 0.05);
+    cursor: pointer;
+}
+
+/* ===== ПОИСК СТУДЕНТОВ (УЛУЧШЕННЫЙ) ===== */
+.student-search-container {
+    margin-bottom: 25px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.student-search-input {
+    flex: 2;
+    min-width: 250px;
+    padding: 10px 15px;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 14px;
+    transition: all 0.2s;
+}
+
+.student-search-input:focus {
+    border-color: #4800B4;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(72, 0, 180, 0.25);
+}
+
+.student-search-clear {
+    background: #e9ecef;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    padding: 8px 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-weight: 500;
+}
+
+.student-search-clear:hover {
+    background: #dee2e6;
+    transform: scale(1.02);
+}
+
+.student-count-badge {
+    background: #4800B4;
+    color: white;
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    font-weight: 500;
+}
+
+/* Подсветка при поиске */
+.path-mod-studentattendance .generaltable tr.student-row-matched {
+    display: table-row;
+    background-color: #fff;
+}
+
+.path-mod-studentattendance .generaltable tr.student-row-hidden {
+    display: none;
+}
+
+/* Подсветка найденного текста */
+.search-highlight {
+    background-color: #ffeb3b;
+    padding: 0 2px;
+    border-radius: 3px;
     font-weight: bold;
 }
