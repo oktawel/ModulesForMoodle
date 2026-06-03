@@ -43,6 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_capability('mod/studentattendan
                 }
             }
         }
+        studentattendance_update_all_grades($studentattendance);
     }
     redirect(new moodle_url('/mod/studentattendance/view.php', array('id' => $cm->id)), 
              get_string('attendancesaved', 'studentattendance'));
@@ -184,7 +185,17 @@ foreach ($current_sessions as $session) {
     $table->head[] = html_writer::tag('div', $date_str, 
         array('style' => "background-color: {$bg_color}; padding: 6px 8px; border-radius: 4px; min-width: 70px;"));
 }
-$table->head[] = get_string('attendancepercentage', 'studentattendance');
+if (!empty($studentattendance->grade_enabled) && $studentattendance->max_grade > 0) {
+    $table->head[] = html_writer::tag('div', 
+        get_string('grade_calculated', 'studentattendance') . 
+        html_writer::empty_tag('br') .
+        html_writer::tag('small', get_string('attendancepercentage', 'studentattendance'), 
+            array('class' => 'text-muted')),
+        array('class' => 'text-center')
+    );
+} else {
+    $table->head[] = get_string('attendancepercentage', 'studentattendance');
+}
 
 foreach ($students as $student) {
     $row = array();
@@ -208,8 +219,27 @@ foreach ($students as $student) {
         }
     }
     
+    // Рассчитываем процент и балл
     $pct = isset($percentage_map[$student->id]) ? $percentage_map[$student->id] : 0;
-    $row[] = html_writer::tag('strong', $pct . '%', array('class' => 'text-primary'));
+    
+    // Если оценивание включено, показываем балл
+    if (!empty($studentattendance->grade_enabled) && $studentattendance->max_grade > 0) {
+        $raw_grade = ($pct / 100) * $studentattendance->max_grade;
+        $grade = round($raw_grade * 4) / 4;
+        $grade = round($grade, 2);
+        
+        $grade_display = html_writer::tag('div', 
+            html_writer::tag('strong', $grade, array('class' => 'text-primary')) . 
+            html_writer::empty_tag('br') .
+            html_writer::tag('small', $pct . '%', array('class' => 'text-muted')),
+            array('class' => 'text-center')
+        );
+        $row[] = $grade_display;
+    } else {
+        // Если оценивание выключено, показываем только процент
+        $row[] = html_writer::tag('strong', $pct . '%', array('class' => 'text-primary'));
+    }
+    
     $table->data[] = $row;
 }
 

@@ -6,25 +6,12 @@ $string['student'] = 'Студент';
 $string['pluginname'] = 'Журнал посещаемости студентов';
 $string['modulename'] = 'Журнал посещаемости студентов';
 $string['modulenameplural'] = 'Журналы посещаемости студентов';
-$string['pluginadministration'] = 'Администрирование журнала'; // <-- ДОБАВЛЕНО
+$string['pluginadministration'] = 'Администрирование журнала';
 
 // Настройки семестра
 $string['semesterstart'] = 'Дата начала семестра';
 $string['semesterend'] = 'Дата окончания семестра';
 $string['weekdays'] = 'Дни проведения занятий';
-$string['weekday1'] = 'Понедельник';
-$string['weekday2'] = 'Вторник';
-$string['weekday3'] = 'Среда';
-$string['weekday4'] = 'Четверг';
-$string['weekday5'] = 'Пятница';
-$string['weekday6'] = 'Суббота';
-$string['weekday7'] = 'Воскресенье';
-
-// Статусы посещаемости
-$string['status_p'] = 'Присутствовал (P)';
-$string['status_a'] = 'Отсутствовал (A)';
-$string['status_l'] = 'Опоздал (L)';
-$string['status_e'] = 'Уважительная причина (E)';
 
 // Действия и сообщения
 $string['savechanges'] = 'Сохранить посещаемость';
@@ -41,13 +28,6 @@ $string['privacy:metadata:studentattendance_records'] = 'Информация о
 $string['privacy:metadata:studentattendance_records:studentid'] = 'ID студента';
 $string['privacy:metadata:studentattendance_records:status'] = 'Статус посещаемости';
 
-$string['pluginname'] = 'Журнал посещаемости студентов';
-$string['modulename'] = 'Журнал посещаемости студентов';
-$string['modulenameplural'] = 'Журналы посещаемости студентов';
-$string['pluginadministration'] = 'Администрирование журнала';
-
-$string['semesterstart'] = 'Дата начала семестра';
-$string['semesterend'] = 'Дата окончания семестра';
 $string['schedule_settings'] = 'Расписание занятий';
 $string['numeratorweek'] = 'Неделя числителя';
 $string['denominatorweek'] = 'Неделя знаменателя';
@@ -63,19 +43,16 @@ $string['weekday5'] = 'Пятница';
 
 $string['status_p'] = 'Присутствовал';
 $string['status_a'] = 'Отсутствовал';
-$string['savechanges'] = 'Сохранить отметки';
-$string['attendancesaved'] = 'Отметки успешно сохранены';
-$string['attendancepercentage'] = 'Общий %';
 $string['student'] = 'Студент';
 
 $string['weektype_n'] = 'Ч';
 $string['weektype_d'] = 'З';
 
-$string['studentattendance:view'] = 'Просматривать журнал посещаемости';
-$string['studentattendance:take'] = 'Отмечать посещаемость';
-$string['studentattendance:addinstance'] = 'Добавлять новый журнал посещаемости';
-
-$string['privacy:metadata:studentattendance_records'] = 'Информация о посещаемости студентов';
-$string['privacy:metadata:studentattendance_records:studentid'] = 'ID студента';
-$string['privacy:metadata:studentattendance_records:status'] = 'Статус посещаемости';
+$string['grade_settings'] = 'Настройки оценивания';
+$string['grade_enabled'] = 'Включить оценивание посещаемости';
+$string['grade_enabled_desc'] = 'Автоматически выставлять баллы в журнал оценок на основе посещаемости';
+$string['grade_enabled_help'] = 'Если включено, система будет автоматически рассчитывать и выставлять баллы студентам в журнал оценок Moodle на основе процента посещаемости.';
+$string['max_grade'] = 'Максимальный балл';
+$string['max_grade_help'] = 'Максимальное количество баллов за 100% посещаемость. Итоговый балл рассчитывается как: (процент посещаемости / 100) * максимальный балл.';
+$string['grade_calculated'] = 'Балл';
 

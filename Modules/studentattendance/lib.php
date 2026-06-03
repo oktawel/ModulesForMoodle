@@ -87,6 +87,94 @@ function studentattendance_delete_instance($id) {
     return true;
 }
 
+/**
+ * Поддержка оценок
+ */
 function studentattendance_get_user_grades($studentattendance, $userid = 0) {
-    return true;
+    global $DB;
+
+    if (empty($studentattendance->grade_enabled)) {
+        return false;
+    }
+
+    $grades = array();
+    $max_grade = $studentattendance->max_grade;
+
+    $sessions = $DB->get_records('studentattendance_sessions', 
+        array('attendanceid' => $studentattendance->id));
+    $total_sessions = count($sessions);
+
+    if ($total_sessions == 0) {
+        return false;
+    }
+
+    $cm = get_coursemodule_from_instance('studentattendance', $studentattendance->id);
+    $context = context_module::instance($cm->id);
+    $students = get_enrolled_users($context, '', 0, 'u.id', null, 0, 0, true);
+
+    foreach ($students as $student) {
+        if ($userid != 0 && $student->id != $userid) {
+            continue;
+        }
+
+        $sql = "SELECT COUNT(*) FROM {studentattendance_records} 
+                WHERE sessionid IN (SELECT id FROM {studentattendance_sessions} 
+                WHERE attendanceid = :attid) 
+                AND studentid = :userid AND status = 'P'";
+        
+        $present_count = $DB->count_records_sql($sql, 
+            array('attid' => $studentattendance->id, 'userid' => $student->id));
+
+        // Рассчитываем балл
+        $percentage = ($present_count / $total_sessions) * 100;
+        $raw_grade = ($percentage / 100) * $max_grade;
+        
+        // ОКРУГЛЯЕМ ДО БЛИЖАЙШИХ 0.25
+        $grade = round($raw_grade * 4) / 4;
+        // Округляем до 2 знаков после запятой для красоты
+        $grade = round($grade, 2);
+
+        $grades[$student->id] = new stdClass();
+        $grades[$student->id]->userid = $student->id;
+        $grades[$student->id]->rawgrade = $grade;
+    }
+
+    return $grades;
+}
+
+/**
+ * Обновление оценок в журнале
+ */
+function studentattendance_update_grades($studentattendance, $userid = 0, $nullifnone = true) {
+    global $CFG;
+    require_once($CFG->libdir . '/gradelib.php');
+
+    if (!$studentattendance->grade_enabled) {
+        grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
+            'studentattendance', $studentattendance->id, 0, null);
+        return;
+    }
+
+    if ($grades = studentattendance_get_user_grades($studentattendance, $userid)) {
+        grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
+            'studentattendance', $studentattendance->id, 0, $grades);
+    } else if ($nullifnone) {
+        $updateitem = new stdClass();
+        $updateitem->idnumber = $studentattendance->id;
+        $updateitem->courseid = $studentattendance->course;
+        $updateitem->itemname = $studentattendance->name;
+        $updateitem->itemtype = 'mod';
+        $updateitem->itemmodule = 'studentattendance';
+        $updateitem->iteminstance = $studentattendance->id;
+        $updateitem->gradetype = GRADE_TYPE_NONE;
+        grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
+            'studentattendance', $studentattendance->id, 0, null, $updateitem);
+    }
+}
+
+/**
+ * Обновление оценок при изменении посещаемости
+ */
+function studentattendance_update_all_grades($studentattendance) {
+    studentattendance_update_grades($studentattendance);
 }
