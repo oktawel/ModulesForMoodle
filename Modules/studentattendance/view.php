@@ -1,11 +1,14 @@
 <?php
+// ЭТА СТРОКА ОБЯЗАТЕЛЬНА И ДОЛЖНА БЫТЬ ПЕРВОЙ!
+require_once(__DIR__ . '/../../config.php'); 
 
+// Только ПОСЛЕ неё можно подключать остальные файлы и использовать функции Moodle
+require_once($CFG->dirroot . '/mod/studentattendance/classes/manager.php');
+
+// Дальше идет ваш код с ini_set и параметрами...
 ini_set('display_errors', 1);
 ini_set('display_startup_errors', 1);
 error_reporting(E_ALL);
-
-require_once(__DIR__ . '/../../config.php');
-require_once($CFG->dirroot . '/mod/studentattendance/classes/manager.php');
 
 $id = required_param('id', PARAM_INT);
 $page_key = optional_param('page', null, PARAM_ALPHANUMEXT); 
@@ -15,12 +18,27 @@ $filter_surname = optional_param('filter_surname', '', PARAM_TEXT);
 $apply = optional_param('apply', 0, PARAM_INT);
 
 $cm = get_coursemodule_from_id('studentattendance', $id, 0, false, MUST_EXIST);
-$course = $DB->get_record('course', array('id' => $cm->course), '*', MUST_EXIST);
+$course = $DB->get_record('course', array('id' => $cm->course), '*', MUST_EXIST); // <-- СНАЧАЛА КУРС
 $studentattendance = $DB->get_record('studentattendance', array('id' => $cm->instance), '*', MUST_EXIST);
 
 require_login($course, true, $cm);
 $context = context_module::instance($cm->id);
 require_capability('mod/studentattendance:view', $context);
+
+// ТОЛЬКО ПОТОМ ГРУППЫ
+$current_group_id = optional_param('group', 0, PARAM_INT);
+$groups = groups_get_all_groups($course->id); 
+
+// Настройка страницы
+$PAGE->set_url('/mod/studentattendance/view.php', array('id' => $cm->id));
+if ($page_key !== null) $PAGE->url->param('page', $page_key);
+if ($search !== '') $PAGE->url->param('search', $search);
+if ($filter_name !== '') $PAGE->url->param('filter_name', $filter_name);
+if ($filter_surname !== '') $PAGE->url->param('filter_surname', $filter_surname);
+if ($current_group_id > 0) $PAGE->url->param('group', $current_group_id);
+
+$PAGE->set_title(format_string($studentattendance->name));
+$PAGE->set_heading(format_string($course->fullname));
 
 $selected_month_key = null;
 
@@ -57,15 +75,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_capability('mod/studentattendan
     redirect(new moodle_url('/mod/studentattendance/view.php', array('id' => $cm->id)), 
              get_string('attendancesaved', 'studentattendance'));
 }
-
-// Настройка страницы
-$PAGE->set_url('/mod/studentattendance/view.php', array('id' => $cm->id));
-if ($page_key !== null) $PAGE->url->param('page', $page_key);
-if ($search !== '') $PAGE->url->param('search', $search);
-if ($filter_name !== '') $PAGE->url->param('filter_name', $filter_name);
-if ($filter_surname !== '') $PAGE->url->param('filter_surname', $filter_surname);
-$PAGE->set_title(format_string($studentattendance->name));
-$PAGE->set_heading(format_string($course->fullname));
 
 echo $OUTPUT->header();
 
@@ -113,30 +122,35 @@ $current_sessions = $current_month_data['sessions'];
 
 // Студенты (без преподавателей)
 $allusers = get_enrolled_users($context, '', 0, 'u.*', 'u.lastname ASC');
-$students = array();
-foreach ($allusers as $user) {
-    if (!has_capability('mod/studentattendance:take', $context, $user->id)) {
-        $students[$user->id] = $user;
-    }
-}
-
-// Применяем фильтры по буквам ТОЛЬКО если нажата кнопка "Применить"
 $filtered_students = array();
-foreach ($students as $student) {
+
+foreach ($allusers as $user) {
+    // Исключаем преподавателей
+    if (has_capability('mod/studentattendance:take', $context, $user->id)) {
+        continue;
+    }
+    
+    // Фильтр по группе
+    if ($current_group_id > 0) {
+        if (!groups_is_member($current_group_id, $user->id)) {
+            continue;
+        }
+    }
+    
+    // Фильтр по буквам (только если нажата кнопка "Применить")
     if ($apply) {
-        $firstname_char = !empty($student->firstname) ? mb_strtoupper(mb_substr($student->firstname, 0, 1)) : '';
-        $lastname_char = !empty($student->lastname) ? mb_strtoupper(mb_substr($student->lastname, 0, 1)) : '';
+        $firstname_char = !empty($user->firstname) ? mb_strtoupper(mb_substr($user->firstname, 0, 1)) : '';
+        $lastname_char = !empty($user->lastname) ? mb_strtoupper(mb_substr($user->lastname, 0, 1)) : '';
         
         $name_match = ($filter_name === '' || $firstname_char === $filter_name);
         $surname_match = ($filter_surname === '' || $lastname_char === $filter_surname);
         
-        if ($name_match && $surname_match) {
-            $filtered_students[$student->id] = $student;
+        if (!$name_match || !$surname_match) {
+            continue;
         }
-    } else {
-        // Показываем всех студентов
-        $filtered_students[$student->id] = $student;
     }
+    
+    $filtered_students[$user->id] = $user;
 }
 $students = $filtered_students;
 
@@ -173,10 +187,14 @@ if (count($sessions_by_month) > 1) {
     echo html_writer::start_div('d-flex justify-content-center gap-2 mb-3 flex-wrap sticky-top bg-white py-2', 
         array('style' => 'z-index: 100; border-bottom: 1px solid #dee2e6;'));
     foreach ($sessions_by_month as $mk => $mdata) {
-        $url = new moodle_url('/mod/studentattendance/view.php', array('id' => $cm->id, 'page' => $mk));
-        if ($search !== '') $url->param('search', $search);
-        if ($filter_name !== '') $url->param('filter_name', $filter_name);
-        if ($filter_surname !== '') $url->param('filter_surname', $filter_surname);
+        $url = new moodle_url('/mod/studentattendance/view.php', array(
+            'id' => $cm->id, 
+            'page' => $mk,
+            'group' => $current_group_id, // <-- ОБЯЗАТЕЛЬНО ДОБАВИТЬ
+            'search' => $search,
+            'filter_name' => $filter_name,
+            'filter_surname' => $filter_surname
+        ));
         $attrs = array('href' => $url, 'class' => 'btn btn-outline-secondary btn-sm');
         if ($mk === $selected_month_key) {
             $attrs['class'] = 'btn btn-primary btn-sm active';
@@ -216,6 +234,7 @@ foreach ($alphabet as $letter) {
     $url = new moodle_url('/mod/studentattendance/view.php', array(
         'id' => $cm->id, 
         'page' => $page_key, 
+        'group' => $current_group_id,
         'filter_name' => $letter, 
         'filter_surname' => $filter_surname,
         'search' => $search
@@ -254,6 +273,7 @@ foreach ($alphabet as $letter) {
     $url = new moodle_url('/mod/studentattendance/view.php', array(
         'id' => $cm->id, 
         'page' => $page_key, 
+        'group' => $current_group_id,
         'filter_name' => $filter_name, 
         'filter_surname' => $letter,
         'search' => $search
@@ -276,6 +296,7 @@ echo html_writer::start_tag('form', array(
 ));
 echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'id', 'value' => $cm->id));
 echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'page', 'value' => $page_key));
+echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'group', 'value' => $current_group_id]); 
 echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'search', 'value' => $search));
 echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'apply', 'value' => '1'));
 echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'filter_name', 'value' => $filter_name, 'id' => 'filter-name-input'));
@@ -285,26 +306,58 @@ echo html_writer::end_tag('form');
 echo html_writer::end_div();
 
 
-// ===== БЛОК ПОИСКА =====
-echo html_writer::start_div('student-search-container', array('style' => 'margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;'));
+// ===== БЛОК ПОИСКА И ГРУПП =====
+echo html_writer::start_div('student-search-container', array(
+    'style' => 'margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;'
+));
+
+// Поле текстового поиска
 echo html_writer::tag('input', '', array(
     'type' => 'text',
     'id' => 'student-search',
     'class' => 'student-search-input',
-    'placeholder' => '🔍 Поиск студентов по фамилии, имени или email...',
+    'placeholder' => '🔍 Поиск по фамилии, имени или email...',
     'autocomplete' => 'off',
     'value' => s($search),
     'style' => 'flex: 2; min-width: 250px; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px;'
 ));
+
 echo html_writer::tag('button', 'Очистить', array(
     'id' => 'student-search-clear',
     'class' => 'btn btn-secondary',
     'type' => 'button'
 ));
-echo html_writer::tag('span', count($students) . ' студентов', array(
+
+// ВЫПАДАЮЩИЙ СПИСОК ГРУПП (БЕЗОПАСНАЯ ВЕРСИЯ)
+if (!empty($groups) && is_array($groups)) {
+    $group_options = [0 => get_string('allparticipants', 'moodle')];
+    foreach ($groups as $g) {
+        if (isset($g->id) && isset($g->name)) {
+            $group_options[$g->id] = format_string($g->name);
+        }
+    }
+    
+    echo html_writer::select(
+        $group_options, 
+        'group', 
+        $current_group_id, 
+        false, 
+        [
+            'id' => 'group-select', 
+            'class' => 'form-select form-select-sm', 
+            'style' => 'width: auto; max-width: 250px;'
+        ]
+    );
+}
+
+// Счетчик студентов
+$display_count = count($students);
+$count_text = ($current_group_id > 0) ? "{$display_count} в группе" : "{$display_count} студентов";
+echo html_writer::tag('span', $count_text, array(
     'id' => 'student-count',
     'style' => 'background: #4800B4; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px;'
 ));
+
 echo html_writer::end_div();
 
 // ФОРМА
@@ -335,20 +388,29 @@ foreach ($current_sessions as $session) {
         ));
     }
     
+    // Применяем цвет и центрирование напрямую к ячейке заголовка
     $bg_color = ($session->weektype === 'N') ? '#e3f2fd' : '#fff8e1';
-    $table->head[] = html_writer::tag('div', $date_str, 
-        array('style' => "background-color: {$bg_color}; padding: 6px 8px; border-radius: 4px; min-width: 70px; text-align: center;"));
+    $table->head[] = html_writer::tag('div', $date_str, [
+        'style' => "background-color: {$bg_color}; width: 100%; height: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center; flex-direction: column;"
+    ]);
 }
-if (!empty($studentattendance->grade_enabled) && $studentattendance->max_grade > 0) {
+$is_grading = !empty($studentattendance->grade_enabled) && $studentattendance->max_grade > 0;
+
+if ($is_grading) {
+    // Если оценки включены: показываем "Балл" крупно, "%" мелко
     $table->head[] = html_writer::tag('div', 
         get_string('grade_calculated', 'studentattendance') . 
         html_writer::empty_tag('br') .
         html_writer::tag('small', get_string('attendancepercentage', 'studentattendance'), 
-            array('class' => 'text-muted')),
-        array('class' => 'text-center')
+            ['class' => 'text-muted fw-normal']),
+        ['class' => 'text-center py-2']
     );
 } else {
-    $table->head[] = get_string('attendancepercentage', 'studentattendance');
+    // Если оценки выключены: показываем просто "%" или "Посещаемость"
+    $table->head[] = html_writer::tag('div', 
+        get_string('attendancepercentage', 'studentattendance'), 
+        ['class' => 'text-center py-2']
+    );
 }
 
 foreach ($students as $student) {
@@ -373,9 +435,12 @@ foreach ($students as $student) {
                 ['class' => 'form-check-input attendance-checkbox', 'id' => "chk_{$session->id}_{$student->id}"]
             );
             
+            // Убираем обертку div, применяем фон и выравнивание напрямую к td
             $bg = ($session->weektype === 'N') ? '#e3f2fd' : '#fff8e1';
-            $row[] = html_writer::tag('div', $checkbox, 
-                array('class' => 'text-center checkbox-cell', 'style' => "background-color: {$bg};"));
+            $row[] = html_writer::tag('div', $checkbox, [
+                'class' => 'checkbox-cell', 
+                'style' => "background-color: {$bg}; width: 100%; height: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center;"
+            ]);
         } else {
             $row[] = ($current_status == 'P') ? '✔' : '✘';
         }
@@ -603,6 +668,20 @@ if (surnameAllBtn) {
         });
         this.classList.remove('btn-outline-secondary');
         this.classList.add('btn-primary');
+    });
+}
+
+// Автоперезагрузка при выборе группы из выпадающего списка
+var groupSelect = document.getElementById('group-select');
+if (groupSelect) {
+    groupSelect.addEventListener('change', function() {
+        var url = new URL(window.location.href);
+        url.searchParams.set('group', this.value);
+        // Сбрасываем поиск и буквы при смене группы для чистоты
+        url.searchParams.delete('search');
+        url.searchParams.delete('filter_name');
+        url.searchParams.delete('filter_surname');
+        window.location.href = url.toString();
     });
 }
 </script>

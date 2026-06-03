@@ -123,3 +123,32 @@
     border-radius: 3px;
     font-weight: bold;
 }
+
+/* Убираем все отступы у ячеек таблицы посещаемости */
+.path-mod-studentattendance .generaltable td,
+.path-mod-studentattendance .generaltable th {
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 1px solid #dee2e6;
+    /* Возвращаем границы, так как убрали padding */
+}
+
+/* Ячейка с чекбоксом теперь сама является контейнером */
+.path-mod-studentattendance .generaltable .checkbox-cell {
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+/* Эффект при наведении должен быть поверх цвета недели */
+.path-mod-studentattendance .generaltable .checkbox-cell:hover {
+    filter: brightness(0.95);
+}
+
+/* Увеличенные чекбоксы остаются без изменений */
+.path-mod-studentattendance .generaltable input[type="checkbox"].attendance-checkbox {
+    transform: scale(1.4);
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    margin: 0;
+}
