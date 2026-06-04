@@ -2,6 +2,7 @@
 defined('MOODLE_INTERNAL') || die();
 
 require_once($CFG->dirroot . '/mod/studentattendance/classes/manager.php');
+require_once($CFG->dirroot . '/cohort/lib.php');
 
 function studentattendance_supports($feature) {
     switch($feature) {
@@ -19,25 +20,49 @@ function studentattendance_add_instance($data, $mform) {
     $data->timecreated = time();
     $data->timemodified = time();
     
-    // Формируем строки дней недели из данных формы
-    $num_weekdays = '';
-    $den_weekdays = '';
-    for ($i = 1; $i <= 5; $i++) {
-        $num_weekdays .= isset($data->{'num_weekday' . $i}) ? '1' : '0';
-        $den_weekdays .= isset($data->{'den_weekday' . $i}) ? '1' : '0';
-    }
-    $data->weekdays_numerator = $num_weekdays;
-    $data->weekdays_denominator = $den_weekdays;
-
     $id = $DB->insert_record('studentattendance', $data);
     
-    mod_studentattendance\manager::generate_sessions(
-        $id, 
-        $data->semesterstart, 
-        $data->semesterend, 
-        $num_weekdays, 
-        $den_weekdays
-    );
+    // Получаем когорты курса
+    $course_context = context_course::instance($data->course);
+    if (has_capability('moodle/cohort:view', context_system::instance())) {
+        $cohorts = cohort_get_available_cohorts($course_context, 0, 0, 0);
+    } else {
+        $cohorts = array();
+    }
+    
+    if (empty($cohorts)) {
+        // Общее расписание
+        mod_studentattendance\manager::generate_sessions(
+            $id, 
+            $data->semesterstart, 
+            $data->semesterend, 
+            $data->weekdays_numerator, 
+            $data->weekdays_denominator,
+            0
+        );
+    } else {
+        // Расписание для каждой когорты из JSON
+        $cohort_schedules = json_decode($data->cohort_schedules, true);
+        
+        foreach ($cohorts as $cohort) {
+            $num_days = '00000';
+            $den_days = '00000';
+            
+            if (isset($cohort_schedules[$cohort->id])) {
+                $num_days = $cohort_schedules[$cohort->id]['numerator'] ?? '00000';
+                $den_days = $cohort_schedules[$cohort->id]['denominator'] ?? '00000';
+            }
+            
+            mod_studentattendance\manager::generate_sessions(
+                $id, 
+                $data->semesterstart, 
+                $data->semesterend, 
+                $num_days, 
+                $den_days,
+                $cohort->id
+            );
+        }
+    }
     
     return $id;
 }
@@ -47,31 +72,54 @@ function studentattendance_update_instance($data, $mform) {
     $data->timemodified = time();
     $data->id = $data->instance;
 
-    $num_weekdays = '';
-    $den_weekdays = '';
-    for ($i = 1; $i <= 5; $i++) {
-        $num_weekdays .= isset($data->{'num_weekday' . $i}) ? '1' : '0';
-        $den_weekdays .= isset($data->{'den_weekday' . $i}) ? '1' : '0';
-    }
-    $data->weekdays_numerator = $num_weekdays;
-    $data->weekdays_denominator = $den_weekdays;
-
     $DB->update_record('studentattendance', $data);
     
-    // Удаляем старые сессии и записи, генерируем заново
+    // Удаляем старые сессии и записи
     $sessions = $DB->get_records('studentattendance_sessions', array('attendanceid' => $data->id));
     foreach ($sessions as $session) {
         $DB->delete_records('studentattendance_records', array('sessionid' => $session->id));
     }
     $DB->delete_records('studentattendance_sessions', array('attendanceid' => $data->id));
     
-    mod_studentattendance\manager::generate_sessions(
-        $data->id, 
-        $data->semesterstart, 
-        $data->semesterend, 
-        $num_weekdays, 
-        $den_weekdays
-    );
+    // Получаем когорты курса
+    $course_context = context_course::instance($data->course);
+    if (has_capability('moodle/cohort:view', context_system::instance())) {
+        $cohorts = cohort_get_available_cohorts($course_context, 0, 0, 0);
+    } else {
+        $cohorts = array();
+    }
+    
+    if (empty($cohorts)) {
+        mod_studentattendance\manager::generate_sessions(
+            $data->id, 
+            $data->semesterstart, 
+            $data->semesterend, 
+            $data->weekdays_numerator, 
+            $data->weekdays_denominator,
+            0
+        );
+    } else {
+        $cohort_schedules = json_decode($data->cohort_schedules, true);
+        
+        foreach ($cohorts as $cohort) {
+            $num_days = '00000';
+            $den_days = '00000';
+            
+            if (isset($cohort_schedules[$cohort->id])) {
+                $num_days = $cohort_schedules[$cohort->id]['numerator'] ?? '00000';
+                $den_days = $cohort_schedules[$cohort->id]['denominator'] ?? '00000';
+            }
+            
+            mod_studentattendance\manager::generate_sessions(
+                $data->id, 
+                $data->semesterstart, 
+                $data->semesterend, 
+                $num_days, 
+                $den_days,
+                $cohort->id
+            );
+        }
+    }
     
     return true;
 }
@@ -87,89 +135,111 @@ function studentattendance_delete_instance($id) {
     return true;
 }
 
-/**
- * Поддержка оценок
- */
 function studentattendance_get_user_grades($studentattendance, $userid = 0) {
     global $DB;
 
-    if (empty($studentattendance->grade_enabled)) {
+    if (empty($studentattendance->grade_enabled) || empty($studentattendance->max_grade)) {
         return false;
     }
 
     $grades = array();
     $max_grade = $studentattendance->max_grade;
 
-    $sessions = $DB->get_records('studentattendance_sessions', 
-        array('attendanceid' => $studentattendance->id));
-    $total_sessions = count($sessions);
+    $cm = get_coursemodule_from_instance('studentattendance', $studentattendance->id);
+    if (!$cm) {
+        return false;
+    }
+    
+    $context = context_module::instance($cm->id);
+    
+    // Получаем всех enrolled пользователей
+    $allusers = get_enrolled_users($context, '', 0, 'u.id', null, 0, 0, true);
+    
+    // Фильтруем: оставляем только студентов
+    $students = array();
+    foreach ($allusers as $user) {
+        if (has_capability('mod/studentattendance:take', $context, $user->id)) {
+            continue;
+        }
+        $students[$user->id] = $user;
+    }
+    
+    if ($userid != 0) {
+        if (!isset($students[$userid])) {
+            return false;
+        }
+        $students = array($userid => $students[$userid]);
+    }
 
-    if ($total_sessions == 0) {
+    if (empty($students)) {
         return false;
     }
 
-    $cm = get_coursemodule_from_instance('studentattendance', $studentattendance->id);
-    $context = context_module::instance($cm->id);
-    $students = get_enrolled_users($context, '', 0, 'u.id', null, 0, 0, true);
+    $all_sessions = $DB->get_records('studentattendance_sessions', 
+        array('attendanceid' => $studentattendance->id));
+
+    if (empty($all_sessions)) {
+        return false;
+    }
 
     foreach ($students as $student) {
-        if ($userid != 0 && $student->id != $userid) {
+        if (!$student) continue;
+        
+        $student_cohorts = cohort_get_user_cohorts($student->id);
+        $student_cohort_ids = array_map(function($c) { return $c->id; }, $student_cohorts);
+        
+        $student_session_ids = array();
+        foreach ($all_sessions as $session) {
+            if ($session->cohortid == 0 || in_array($session->cohortid, $student_cohort_ids)) {
+                $student_session_ids[] = $session->id;
+            }
+        }
+        
+        if (empty($student_session_ids)) {
+            $grades[$student->id] = new stdClass();
+            $grades[$student->id]->userid = $student->id;
+            $grades[$student->id]->rawgrade = 0;
             continue;
         }
-
+        
+        $total_sessions = count($student_session_ids);
+        
+        list($insql, $inparams) = $DB->get_in_or_equal($student_session_ids, SQL_PARAMS_NAMED);
         $sql = "SELECT COUNT(*) FROM {studentattendance_records} 
-                WHERE sessionid IN (SELECT id FROM {studentattendance_sessions} 
-                WHERE attendanceid = :attid) 
+                WHERE sessionid $insql 
                 AND studentid = :userid AND status = 'P'";
         
-        $present_count = $DB->count_records_sql($sql, 
-            array('attid' => $studentattendance->id, 'userid' => $student->id));
+        $present_count = $DB->count_records_sql($sql, array_merge($inparams, array('userid' => $student->id)));
 
-        // Рассчитываем балл
         $percentage = ($present_count / $total_sessions) * 100;
         $raw_grade = ($percentage / 100) * $max_grade;
         
-        // ОКРУГЛЯЕМ ДО БЛИЖАЙШИХ 0.25
         $grade = round($raw_grade * 4) / 4;
-        // Округляем до 2 знаков после запятой для красоты
         $grade = round($grade, 2);
 
         $grades[$student->id] = new stdClass();
         $grades[$student->id]->userid = $student->id;
         $grades[$student->id]->rawgrade = $grade;
-
-    }
-
-    foreach ($grades as $studentid => $grade) {
-        // Убедитесь что оценка в пределах 0-max_grade
-        if ($grade->rawgrade < 0) {
-            $grade->rawgrade = 0;
-        }
-        if ($grade->rawgrade > $max_grade) {
-            $grade->rawgrade = $max_grade;
-        }
     }
 
     return $grades;
 }
 
-/**
- * Обновление оценок в журнале
- */
 function studentattendance_update_grades($studentattendance, $userid = 0, $nullifnone = true) {
-    global $CFG, $DB;
+    global $CFG;
     require_once($CFG->libdir . '/gradelib.php');
 
+    // Если оценивание выключено - удаляем элемент из журнала оценок
     if (!$studentattendance->grade_enabled || empty($studentattendance->max_grade)) {
-        // Если оценивание выключено, удаляем элемент из журнала оценок
         grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
             'studentattendance', $studentattendance->id, 0, null, 
             array('deleted' => 1));
-        return;
+        return GRADE_UPDATE_OK;
     }
 
-    // Получаем оценки
-    if ($grades = studentattendance_get_user_grades($studentattendance, $userid)) {
+    $grades = studentattendance_get_user_grades($studentattendance, $userid);
+    
+    if ($grades && !empty($grades)) {
         // Обновляем журнал оценок
         $result = grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
             'studentattendance', $studentattendance->id, 0, $grades,
@@ -181,28 +251,22 @@ function studentattendance_update_grades($studentattendance, $userid = 0, $nulli
             )
         );
         
-        if ($result !== GRADE_UPDATE_OK) {
-            error_log("Grade update error: " . $result);
-        }
-        
         return $result;
     } else if ($nullifnone) {
-        // Если оценок нет, устанавливаем как пустое значение
-        grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
-            'studentattendance', $studentattendance->id, 0, null,
-            array(
-                'itemname' => $studentattendance->name,
-                'gradetype' => GRADE_TYPE_VALUE,
-                'grademax' => $studentattendance->max_grade,
-                'grademin' => 0,
-            )
-        );
+        // Если оценок нет, создаем пустой элемент
+        $updateitem = new stdClass();
+        $updateitem->itemname = $studentattendance->name;
+        $updateitem->gradetype = GRADE_TYPE_VALUE;
+        $updateitem->grademax = $studentattendance->max_grade;
+        $updateitem->grademin = 0;
+        
+        return grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
+            'studentattendance', $studentattendance->id, 0, null, $updateitem);
     }
+    
+    return GRADE_UPDATE_OK;
 }
 
-/**
- * Обновление оценок при изменении посещаемости
- */
 function studentattendance_update_all_grades($studentattendance) {
-    studentattendance_update_grades($studentattendance);
+    return studentattendance_update_grades($studentattendance, 0, false);
 }
