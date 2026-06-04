@@ -4,6 +4,7 @@ require_once(__DIR__ . '/../../config.php');
 
 // Только ПОСЛЕ неё можно подключать остальные файлы и использовать функции Moodle
 require_once($CFG->dirroot . '/mod/studentattendance/classes/manager.php');
+require_once($CFG->dirroot . '/cohort/lib.php');
 
 // Дальше идет ваш код с ini_set и параметрами...
 ini_set('display_errors', 1);
@@ -25,9 +26,23 @@ require_login($course, true, $cm);
 $context = context_module::instance($cm->id);
 require_capability('mod/studentattendance:view', $context);
 
-// ТОЛЬКО ПОТОМ ГРУППЫ
-$current_group_id = optional_param('group', 0, PARAM_INT);
-$groups = groups_get_all_groups($course->id); 
+$can_take = has_capability('mod/studentattendance:take', $context);
+
+// // Получаем ЛОКАЛЬНЫЕ группы курса
+// $current_group_id = optional_param('group', 0, PARAM_INT);
+// $groups = groups_get_all_groups($course->id);
+
+// Получаем ГЛОБАЛЬНЫЕ группы (когорты)
+$current_cohort_id = optional_param('cohort', 0, PARAM_INT);
+$course_context = context_course::instance($course->id);
+if (has_capability('moodle/cohort:view', context_system::instance())) {
+    $cohorts = cohort_get_available_cohorts($course_context, 0, 0, 0);
+} else {
+    $cohorts = array();
+}
+
+// Для отладки - раскомментируйте если группы не показываются
+// echo "<pre>Groups: "; print_r($groups); echo "</pre>";
 
 // Настройка страницы
 $PAGE->set_url('/mod/studentattendance/view.php', array('id' => $cm->id));
@@ -35,7 +50,7 @@ if ($page_key !== null) $PAGE->url->param('page', $page_key);
 if ($search !== '') $PAGE->url->param('search', $search);
 if ($filter_name !== '') $PAGE->url->param('filter_name', $filter_name);
 if ($filter_surname !== '') $PAGE->url->param('filter_surname', $filter_surname);
-if ($current_group_id > 0) $PAGE->url->param('group', $current_group_id);
+if ($current_cohort_id > 0) $PAGE->url->param('cohort', $current_cohort_id);
 
 $PAGE->set_title(format_string($studentattendance->name));
 $PAGE->set_heading(format_string($course->fullname));
@@ -75,6 +90,56 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && has_capability('mod/studentattendan
     redirect(new moodle_url('/mod/studentattendance/view.php', array('id' => $cm->id)), 
              get_string('attendancesaved', 'studentattendance'));
 }
+
+// ===== AJAX ОБРАБОТЧИК =====
+// if (optional_param('ajax', 0, PARAM_INT) == 1) {
+//     header('Content-Type: application/json; charset=utf-8');
+    
+//     $ajax_filter_name = optional_param('filter_name', '', PARAM_TEXT);
+//     $ajax_filter_surname = optional_param('filter_surname', '', PARAM_TEXT);
+//     $ajax_group = optional_param('group', 0, PARAM_INT);
+//     $ajax_search = optional_param('search', '', PARAM_TEXT);
+    
+//     $allusers = get_enrolled_users($context, '', 0, 'u.*', 'u.lastname ASC');
+//     $filtered_students = array();
+    
+//     foreach ($allusers as $user) {
+//         if (has_capability('mod/studentattendance:take', $context, $user->id)) {
+//             continue;
+//         }
+        
+//         if ($ajax_group > 0 && !groups_is_member($ajax_group, $user->id)) {
+//             continue;
+//         }
+        
+//         $firstname_char = !empty($user->firstname) ? mb_strtoupper(mb_substr($user->firstname, 0, 1)) : '';
+//         $lastname_char = !empty($user->lastname) ? mb_strtoupper(mb_substr($user->lastname, 0, 1)) : '';
+        
+//         $name_match = ($ajax_filter_name === '' || $firstname_char === $ajax_filter_name);
+//         $surname_match = ($ajax_filter_surname === '' || $lastname_char === $ajax_filter_surname);
+        
+//         $search_match = true;
+//         if ($ajax_search !== '') {
+//             $search_lower = mb_strtolower($ajax_search);
+//             $searchable = mb_strtolower($user->firstname . ' ' . $user->lastname . ' ' . $user->email);
+//             $search_match = (strpos($searchable, $search_lower) !== false);
+//         }
+        
+//         if ($name_match && $surname_match && $search_match) {
+//             $filtered_students[] = array(
+//                 'id' => $user->id,
+//                 'fullname' => fullname($user)
+//             );
+//         }
+//     }
+    
+//     echo json_encode(array(
+//         'students' => $filtered_students,
+//         'count' => count($filtered_students),
+//         'total' => count($allusers)
+//     ));
+//     exit;
+// }
 
 echo $OUTPUT->header();
 
@@ -130,9 +195,16 @@ foreach ($allusers as $user) {
         continue;
     }
     
-    // Фильтр по группе
-    if ($current_group_id > 0) {
-        if (!groups_is_member($current_group_id, $user->id)) {
+    // Если текущий пользователь - студент, показываем только его
+    if (!$can_take && $user->id != $USER->id) {
+        continue;
+    }
+    
+    // Фильтр по когорте (глобальной группе)
+    if ($current_cohort_id > 0) {
+        $user_cohorts = cohort_get_user_cohorts($user->id);
+        $user_cohort_ids = array_map(function($c) { return $c->id; }, $user_cohorts);
+        if (!in_array($current_cohort_id, $user_cohort_ids)) {
             continue;
         }
     }
@@ -180,17 +252,18 @@ if (!empty($current_sessions)) {
          FROM {studentattendance_records} WHERE sessionid $insql", $inparams);
 }
 
-$can_take = has_capability('mod/studentattendance:take', $context);
+// $can_take = has_capability('mod/studentattendance:take', $context);
 
 // ===== НАВИГАЦИЯ ПО МЕСЯЦАМ =====
 if (count($sessions_by_month) > 1) {
-    echo html_writer::start_div('d-flex justify-content-center gap-2 mb-3 flex-wrap sticky-top bg-white py-2', 
-        array('style' => 'z-index: 100; border-bottom: 1px solid #dee2e6;'));
+    echo html_writer::start_div('d-flex justify-content-center gap-2 mb-3 flex-wrap bg-white py-2', 
+        array('style' => 'border-bottom: 1px solid #dee2e6;'));
     foreach ($sessions_by_month as $mk => $mdata) {
         $url = new moodle_url('/mod/studentattendance/view.php', array(
             'id' => $cm->id, 
             'page' => $mk,
-            'group' => $current_group_id, // <-- ОБЯЗАТЕЛЬНО ДОБАВИТЬ
+            // 'group' => $current_group_id,      // Локальная группа
+            'cohort' => $current_cohort_id,    // Глобальная группа
             'search' => $search,
             'filter_name' => $filter_name,
             'filter_surname' => $filter_surname
@@ -205,160 +278,138 @@ if (count($sessions_by_month) > 1) {
     echo html_writer::end_div();
 }
 
-// ===== ФИЛЬТРЫ ПО АЛФАВИТУ (РАБОТАЮЩИЕ) =====
-$alphabet = array('А','Б','В','Г','Д','Е','Ё','Ж','З','И','К','Л','М','Н','О','П','Р','С','Т','У','Ф','Х','Ц','Ч','Ш','Щ','Э','Ю','Я');
-
-echo html_writer::start_div('filter-container', array('style' => 'margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #dee2e6;'));
-
-// Фильтр по имени
-echo html_writer::tag('div', '<strong>Имя</strong>', array('style' => 'margin-bottom: 8px;'));
-
-// Кнопка "Все" (очищает фильтр по имени)
-$url_name_all = new moodle_url('/mod/studentattendance/view.php', array(
-    'id' => $cm->id, 
-    'page' => $page_key, 
-    'filter_surname' => $filter_surname,
-    'search' => $search
-));
-$active_class = (empty($filter_name)) ? 'btn-primary' : 'btn-outline-secondary';
-echo html_writer::tag('button', 'Все', array(
-    'type' => 'button',
-    'id' => 'name-all-btn',
-    'class' => 'btn btn-sm ' . $active_class,
-    'style' => 'min-width: 40px; margin-bottom: 10px; display: inline-block; margin-right: 10px;'
-));
-
-// Буквы для имени
-echo html_writer::start_div('filter-buttons', array('style' => 'display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 20px;'));
-foreach ($alphabet as $letter) {
-    $url = new moodle_url('/mod/studentattendance/view.php', array(
-        'id' => $cm->id, 
-        'page' => $page_key, 
-        'group' => $current_group_id,
-        'filter_name' => $letter, 
-        'filter_surname' => $filter_surname,
-        'search' => $search
+// ===== БЛОК ОТБОРОВ (СВОРАЧИВАЕМЫЙ) =====
+if ($can_take) {
+    echo html_writer::start_div('attendance-filters-wrapper', array(
+        'style' => 'margin-bottom: 20px; border: 1px solid #dee2e6; border-radius: 8px; overflow: hidden; background: #f8f9fa;'
     ));
-    $active_class = ($filter_name === $letter) ? 'btn-primary' : 'btn-outline-secondary';
-    echo html_writer::tag('button', $letter, array(
-    'type' => 'button',
-    'class' => 'btn btn-sm ' . $active_class . ' name-filter-btn',
-    'data-letter' => $letter,
-    'style' => 'min-width: 35px; width: 35px; padding: 4px 0; text-align: center;'
-));
-}
-echo html_writer::end_div();
 
-// Фильтр по фамилии
-echo html_writer::tag('div', '<strong>Фамилия</strong>', array('style' => 'margin-bottom: 8px;'));
+    // Заголовок-кнопка
+    echo html_writer::tag('div', 
+        '<span>Отборы</span><span class="toggle-arrow"></span>', 
+        array(
+            'id' => 'filters-toggle',
+            'class' => 'filters-toggle-btn',
+            'style' => 'padding: 12px 20px; background: #f1f3f5; cursor: pointer; font-weight: 600; font-size: 15px; border-bottom: 1px solid #dee2e6; display: flex; justify-content: space-between; align-items: center; user-select: none; transition: background-color 0.2s;'
+        )
+    );
 
-// Кнопка "Все" (очищает фильтр по фамилии)
-$url_surname_all = new moodle_url('/mod/studentattendance/view.php', array(
-    'id' => $cm->id, 
-    'page' => $page_key, 
-    'filter_name' => $filter_name,
-    'search' => $search
-));
-$active_class = (empty($filter_surname)) ? 'btn-primary' : 'btn-outline-secondary';
-echo html_writer::tag('button', 'Все', array(
-    'type' => 'button',
-    'id' => 'surname-all-btn',
-    'class' => 'btn btn-sm ' . $active_class,
-    'style' => 'min-width: 40px; margin-bottom: 10px; display: inline-block; margin-right: 10px;'
-));
-
-// Буквы для фамилии
-echo html_writer::start_div('filter-buttons', array('style' => 'display: flex; flex-wrap: wrap; gap: 4px;'));
-foreach ($alphabet as $letter) {
-    $url = new moodle_url('/mod/studentattendance/view.php', array(
-        'id' => $cm->id, 
-        'page' => $page_key, 
-        'group' => $current_group_id,
-        'filter_name' => $filter_name, 
-        'filter_surname' => $letter,
-        'search' => $search
+    // Раскрывающийся контент
+    echo html_writer::start_div('filters-content', array(
+        'id' => 'filters-content',
+        'style' => 'display: none; padding: 15px;'
     ));
-    $active_class = ($filter_surname === $letter) ? 'btn-primary' : 'btn-outline-secondary';
-    echo html_writer::tag('button', $letter, array(
-    'type' => 'button',
-    'class' => 'btn btn-sm ' . $active_class . ' surname-filter-btn',
-    'data-letter' => $letter,
-    'style' => 'min-width: 35px; width: 35px; padding: 4px 0; text-align: center;'
-));
+
+    // --- Селектор глобальной группы ---
+    if (!empty($cohorts)) {
+        echo html_writer::start_div('mb-3');
+        echo html_writer::label('Группа ', 'cohort-select', false, ['class' => 'form-label fw-bold']);
+        
+        $cohort_options = [0 => 'Все участники'];
+        foreach ($cohorts as $cohort) {
+            $cohort_options[$cohort->id] = format_string($cohort->name);
+        }
+        
+        echo html_writer::select(
+            $cohort_options,
+            'cohort',
+            $current_cohort_id,
+            false,
+            [
+                'id' => 'cohort-select',
+                'class' => 'form-select',
+                'style' => 'max-width: 400px;'
+            ]
+        );
+        echo html_writer::end_div();
+    }
+
+    // --- Фильтр по имени ---
+    $alphabet = array('А','Б','В','Г','Д','Е','Ё','Ж','З','И','К','Л','М','Н','О','П','Р','С','Т','У','Ф','Х','Ц','Ч','Ш','Щ','Э','Ю','Я');
+
+    echo html_writer::tag('div', '<strong>Имя</strong>', array('style' => 'margin-bottom: 8px;'));
+
+    $active_class = (empty($filter_name)) ? 'btn-primary' : 'btn-outline-secondary';
+    echo html_writer::tag('button', 'Все', array(
+        'type' => 'button',
+        'id' => 'name-all-btn',
+        'class' => 'btn btn-sm ' . $active_class,
+        'style' => 'min-width: 40px; margin-bottom: 10px; display: inline-block; margin-right: 10px;'
+    ));
+
+    echo html_writer::start_div('filter-buttons', array('style' => 'display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 20px;'));
+    foreach ($alphabet as $letter) {
+        $active_class = ($filter_name === $letter) ? 'btn-primary' : 'btn-outline-secondary';
+        echo html_writer::tag('button', $letter, array(
+            'type' => 'button',
+            'class' => 'btn btn-sm ' . $active_class . ' name-filter-btn',
+            'data-letter' => $letter,
+            'style' => 'min-width: 35px; width: 35px; padding: 4px 0; text-align: center;'
+        ));
+    }
+    echo html_writer::end_div();
+
+    // --- Фильтр по фамилии ---
+    echo html_writer::tag('div', '<strong>Фамилия</strong>', array('style' => 'margin-bottom: 8px;'));
+
+    $active_class = (empty($filter_surname)) ? 'btn-primary' : 'btn-outline-secondary';
+    echo html_writer::tag('button', 'Все', array(
+        'type' => 'button',
+        'id' => 'surname-all-btn',
+        'class' => 'btn btn-sm ' . $active_class,
+        'style' => 'min-width: 40px; margin-bottom: 10px; display: inline-block; margin-right: 10px;'
+    ));
+
+    echo html_writer::start_div('filter-buttons', array('style' => 'display: flex; flex-wrap: wrap; gap: 4px;'));
+    foreach ($alphabet as $letter) {
+        $active_class = ($filter_surname === $letter) ? 'btn-primary' : 'btn-outline-secondary';
+        echo html_writer::tag('button', $letter, array(
+            'type' => 'button',
+            'class' => 'btn btn-sm ' . $active_class . ' surname-filter-btn',
+            'data-letter' => $letter,
+            'style' => 'min-width: 35px; width: 35px; padding: 4px 0; text-align: center;'
+        ));
+    }
+    echo html_writer::end_div();
+
+    echo html_writer::end_div(); // конец filters-content
+    echo html_writer::end_div(); // конец attendance-filters-wrapper
 }
-echo html_writer::end_div();
-
-// Форма с кнопкой "Применить"
-echo html_writer::start_tag('form', array(
-    'method' => 'get',
-    'action' => new moodle_url('/mod/studentattendance/view.php'),
-    'style' => 'margin-top: 15px; text-align: right;'
-));
-echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'id', 'value' => $cm->id));
-echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'page', 'value' => $page_key));
-echo html_writer::empty_tag('input', ['type' => 'hidden', 'name' => 'group', 'value' => $current_group_id]); 
-echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'search', 'value' => $search));
-echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'apply', 'value' => '1'));
-echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'filter_name', 'value' => $filter_name, 'id' => 'filter-name-input'));
-echo html_writer::empty_tag('input', array('type' => 'hidden', 'name' => 'filter_surname', 'value' => $filter_surname, 'id' => 'filter-surname-input'));
-echo html_writer::tag('button', 'Применить', array('type' => 'submit', 'class' => 'btn btn-primary', 'style' => 'min-width: 100px;'));
-echo html_writer::end_tag('form');
-echo html_writer::end_div();
-
 
 // ===== БЛОК ПОИСКА И ГРУПП =====
-echo html_writer::start_div('student-search-container', array(
-    'style' => 'margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;'
-));
+if ($can_take) {
+    echo html_writer::start_div('student-search-container', array(
+        'style' => 'margin-bottom: 20px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;'
+    ));
 
-// Поле текстового поиска
-echo html_writer::tag('input', '', array(
-    'type' => 'text',
-    'id' => 'student-search',
-    'class' => 'student-search-input',
-    'placeholder' => '🔍 Поиск по фамилии, имени или email...',
-    'autocomplete' => 'off',
-    'value' => s($search),
-    'style' => 'flex: 2; min-width: 250px; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px;'
-));
+    // Поле текстового поиска
+    echo html_writer::tag('input', '', array(
+        'type' => 'text',
+        'id' => 'student-search',
+        'class' => 'student-search-input',
+        'placeholder' => '🔍 Поиск по фамилии, имени или email...',
+        'autocomplete' => 'off',
+        'value' => s($search),
+        'style' => 'flex: 2; min-width: 250px; padding: 8px 12px; border: 1px solid #ced4da; border-radius: 4px;'
+    ));
 
-echo html_writer::tag('button', 'Очистить', array(
-    'id' => 'student-search-clear',
-    'class' => 'btn btn-secondary',
-    'type' => 'button'
-));
+    echo html_writer::tag('button', 'Очистить', array(
+        'id' => 'student-search-clear',
+        'class' => 'btn btn-secondary',
+        'type' => 'button'
+    ));
 
-// ВЫПАДАЮЩИЙ СПИСОК ГРУПП (БЕЗОПАСНАЯ ВЕРСИЯ)
-if (!empty($groups) && is_array($groups)) {
-    $group_options = [0 => get_string('allparticipants', 'moodle')];
-    foreach ($groups as $g) {
-        if (isset($g->id) && isset($g->name)) {
-            $group_options[$g->id] = format_string($g->name);
-        }
+    // Счетчик студентов
+    if ($can_take) {
+        $display_count = count($students);
+        $count_text = ($current_cohort_id > 0) ? "{$display_count} в группе" : "{$display_count} студентов";
+        echo html_writer::tag('span', $count_text, array(
+            'id' => 'student-count',
+            'style' => 'background: #4800B4; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px;'
+        ));
     }
-    
-    echo html_writer::select(
-        $group_options, 
-        'group', 
-        $current_group_id, 
-        false, 
-        [
-            'id' => 'group-select', 
-            'class' => 'form-select form-select-sm', 
-            'style' => 'width: auto; max-width: 250px;'
-        ]
-    );
+    echo html_writer::end_div();
 }
-
-// Счетчик студентов
-$display_count = count($students);
-$count_text = ($current_group_id > 0) ? "{$display_count} в группе" : "{$display_count} студентов";
-echo html_writer::tag('span', $count_text, array(
-    'id' => 'student-count',
-    'style' => 'background: #4800B4; color: white; padding: 5px 12px; border-radius: 20px; font-size: 13px;'
-));
-
-echo html_writer::end_div();
 
 // ФОРМА
 echo html_writer::start_tag('form', array('method' => 'post', 
@@ -416,8 +467,15 @@ if ($is_grading) {
 foreach ($students as $student) {
     $row = array();
     $fullname = fullname($student);
+    
+    // Получаем когорту студента (глобальную группу)
+    $student_cohorts = cohort_get_user_cohorts($student->id);
+    $student_cohort_id = !empty($student_cohorts) ? reset($student_cohorts)->id : 0;
+    
     $row[] = html_writer::tag('span', $fullname, array(
         'class' => 'student-name',
+        'data-student-id' => $student->id,
+        'data-cohortid' => $student_cohort_id,
         'data-firstname' => mb_strtolower($student->firstname),
         'data-lastname' => mb_strtolower($student->lastname),
         'data-email' => mb_strtolower($student->email),
@@ -482,6 +540,7 @@ echo html_writer::end_tag('form');
 // ===== JAVASCRIPT ДЛЯ ПОИСКА =====
 $js = <<<EOD
 <script>
+// === ЛОКАЛЬНЫЙ ПОИСК ПО ТЕКСТУ ===
 (function() {
     var searchInput = document.getElementById('student-search');
     var clearButton = document.getElementById('student-search-clear');
@@ -493,7 +552,7 @@ $js = <<<EOD
     var rows = table.querySelectorAll('tbody tr');
     var totalRows = rows.length;
     
-    function filterStudents() {
+    function filterStudentsLocal() {
         var searchTerm = searchInput.value.trim().toLowerCase();
         var visibleCount = 0;
         
@@ -508,23 +567,28 @@ $js = <<<EOD
             var fullName = nameSpan.getAttribute('data-fullname') || '';
             
             var searchableText = (firstName + ' ' + lastName + ' ' + email + ' ' + fullName).toLowerCase();
-            
             var isMatch = (searchTerm === '') || (searchableText.indexOf(searchTerm) !== -1);
             
-            if (isMatch) {
+            // Проверяем, не скрыта ли строка фильтрами по буквам
+            var isHiddenByLetter = row.style.display === 'none' && row.classList.contains('hidden-by-letter');
+            
+            if (isMatch && !isHiddenByLetter) {
                 row.style.display = '';
+                row.classList.remove('hidden-by-search');
                 visibleCount++;
             } else {
                 row.style.display = 'none';
+                row.classList.add('hidden-by-search');
             }
         }
         
         if (studentCountSpan) {
             if (searchTerm === '') {
-                studentCountSpan.innerHTML = totalRows + ' студентов';
+                var totalVisible = document.querySelectorAll('#attendance-table tbody tr:not(.hidden-by-letter)').length;
+                studentCountSpan.innerHTML = totalVisible + ' студентов';
                 studentCountSpan.style.background = '#4800B4';
             } else {
-                studentCountSpan.innerHTML = 'Найдено: ' + visibleCount + ' из ' + totalRows;
+                studentCountSpan.innerHTML = 'Найдено: ' + visibleCount;
                 studentCountSpan.style.background = visibleCount > 0 ? '#28a745' : '#ca3120';
             }
         }
@@ -533,13 +597,13 @@ $js = <<<EOD
     var debounceTimer;
     searchInput.addEventListener('input', function() {
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(filterStudents, 150);
+        debounceTimer = setTimeout(filterStudentsLocal, 150);
     });
     
     if (clearButton) {
         clearButton.addEventListener('click', function() {
             searchInput.value = '';
-            filterStudents();
+            filterStudentsLocal();
             searchInput.focus();
         });
     }
@@ -552,136 +616,227 @@ $js = <<<EOD
         }
     });
     
-    function enhanceCheckboxes() {
-        var checkboxes = document.querySelectorAll('.path-mod-studentattendance .generaltable input[type="checkbox"]');
-        for (var i = 0; i < checkboxes.length; i++) {
-            var cb = checkboxes[i];
-            cb.style.transform = 'scale(1.3)';
-            cb.style.margin = '0 auto';
-            cb.style.display = 'inline-block';
-            cb.style.verticalAlign = 'middle';
-            cb.style.cursor = 'pointer';
-            cb.style.width = '18px';
-            cb.style.height = '18px';
-            
-            var cell = cb.closest('td');
-            if (cell && !cell.hasAttribute('data-click-bound')) {
-                cell.setAttribute('data-click-bound', 'true');
-                cell.style.cursor = 'pointer';
-                cell.addEventListener('click', function(e) {
-                    if (e.target.tagName !== 'INPUT') {
-                        var checkbox = this.querySelector('input[type="checkbox"]');
-                        if (checkbox) {
-                            checkbox.checked = !checkbox.checked;
-                            var event = new Event('change', { bubbles: true });
-                            checkbox.dispatchEvent(event);
-                        }
-                    }
-                });
-            }
-        }
-    }
-    
-    enhanceCheckboxes();
-    
-    // Если есть параметр search в URL, применяем фильтр сразу
     if (searchInput.value !== '') {
-        filterStudents();
+        filterStudentsLocal();
     }
-    
 })();
 
-// Буквы имени
-var nameButtons = document.querySelectorAll('.name-filter-btn');
-var nameInput = document.getElementById('filter-name-input');
-var nameAllBtn = document.getElementById('name-all-btn');
+// === ФИЛЬТРАЦИЯ ПО БУКВАМ ===
+var activeName = '';
+var activeSurname = '';
 
-nameButtons.forEach(function(btn) {
+function filterByLetters() {
+    var table = document.getElementById('attendance-table');
+    var studentCountSpan = document.getElementById('student-count');
+    var cohortSelect = document.getElementById('cohort-select');
+    if (!table) return;
+    
+    var selectedCohort = cohortSelect ? parseInt(cohortSelect.value) : 0;
+    
+    var rows = table.querySelectorAll('tbody tr');
+    var visibleCount = 0;
+    
+    rows.forEach(function(row) {
+        var nameSpan = row.querySelector('td:first-child .student-name');
+        if (!nameSpan) return;
+        
+        var cohortId = nameSpan.getAttribute('data-cohortid');
+        var firstName = nameSpan.getAttribute('data-firstname') || '';
+        var lastName = nameSpan.getAttribute('data-lastname') || '';
+        
+        var firstCharName = firstName.charAt(0).toUpperCase();
+        var firstCharSurname = lastName.charAt(0).toUpperCase();
+        
+        var cohortMatch = (selectedCohort === 0 || parseInt(cohortId) === selectedCohort);
+        var nameMatch = (activeName === '' || firstCharName === activeName);
+        var surnameMatch = (activeSurname === '' || firstCharSurname === activeSurname);
+        
+        if (cohortMatch && nameMatch && surnameMatch) {
+            row.style.display = '';
+            row.classList.remove('hidden-by-letter');
+            visibleCount++;
+        } else {
+            row.style.display = 'none';
+            row.classList.add('hidden-by-letter');
+        }
+    });
+    
+    if (studentCountSpan) {
+        var cohortText = selectedCohort > 0 ? ' в группе' : '';
+        studentCountSpan.innerHTML = visibleCount + ' студентов' + cohortText;
+        studentCountSpan.style.background = visibleCount > 0 ? '#4800B4' : '#ca3120';
+    }
+}
+
+// Обработчики кнопок имени
+document.querySelectorAll('.name-filter-btn').forEach(function(btn) {
     btn.addEventListener('click', function() {
         var letter = this.getAttribute('data-letter');
-        if (nameInput.value === letter) {
-            nameInput.value = '';
+        
+        // Toggle: если нажали уже активную кнопку - сбрасываем
+        if (activeName === letter) {
+            activeName = '';
             this.classList.remove('btn-primary');
             this.classList.add('btn-outline-secondary');
         } else {
-            nameInput.value = letter;
-            nameButtons.forEach(function(b) {
+            // Сбрасываем все кнопки
+            document.querySelectorAll('.name-filter-btn').forEach(function(b) {
                 b.classList.remove('btn-primary');
                 b.classList.add('btn-outline-secondary');
             });
+            // Активируем нажатую
+            activeName = letter;
             this.classList.remove('btn-outline-secondary');
             this.classList.add('btn-primary');
         }
+        
+        // Обновляем кнопку "Все"
+        var nameAllBtn = document.getElementById('name-all-btn');
         if (nameAllBtn) {
-            nameAllBtn.classList.remove('btn-primary');
-            nameAllBtn.classList.add('btn-outline-secondary');
+            if (activeName === '') {
+                nameAllBtn.classList.remove('btn-outline-secondary');
+                nameAllBtn.classList.add('btn-primary');
+            } else {
+                nameAllBtn.classList.remove('btn-primary');
+                nameAllBtn.classList.add('btn-outline-secondary');
+            }
         }
+        
+        filterByLetters();
     });
 });
 
+// Обработчики кнопок фамилии
+document.querySelectorAll('.surname-filter-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var letter = this.getAttribute('data-letter');
+        
+        if (activeSurname === letter) {
+            activeSurname = '';
+            this.classList.remove('btn-primary');
+            this.classList.add('btn-outline-secondary');
+        } else {
+            document.querySelectorAll('.surname-filter-btn').forEach(function(b) {
+                b.classList.remove('btn-primary');
+                b.classList.add('btn-outline-secondary');
+            });
+            activeSurname = letter;
+            this.classList.remove('btn-outline-secondary');
+            this.classList.add('btn-primary');
+        }
+        
+        var surnameAllBtn = document.getElementById('surname-all-btn');
+        if (surnameAllBtn) {
+            if (activeSurname === '') {
+                surnameAllBtn.classList.remove('btn-outline-secondary');
+                surnameAllBtn.classList.add('btn-primary');
+            } else {
+                surnameAllBtn.classList.remove('btn-primary');
+                surnameAllBtn.classList.add('btn-outline-secondary');
+            }
+        }
+        
+        filterByLetters();
+    });
+});
+
+// Кнопка "Все" для имени
+var nameAllBtn = document.getElementById('name-all-btn');
 if (nameAllBtn) {
     nameAllBtn.addEventListener('click', function() {
-        nameInput.value = '';
-        nameButtons.forEach(function(b) {
+        activeName = '';
+        document.querySelectorAll('.name-filter-btn').forEach(function(b) {
             b.classList.remove('btn-primary');
             b.classList.add('btn-outline-secondary');
         });
         this.classList.remove('btn-outline-secondary');
         this.classList.add('btn-primary');
+        filterByLetters();
     });
 }
 
-// Буквы фамилии
-var surnameButtons = document.querySelectorAll('.surname-filter-btn');
-var surnameInput = document.getElementById('filter-surname-input');
+// Кнопка "Все" для фамилии
 var surnameAllBtn = document.getElementById('surname-all-btn');
-
-surnameButtons.forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var letter = this.getAttribute('data-letter');
-        if (surnameInput.value === letter) {
-            surnameInput.value = '';
-            this.classList.remove('btn-primary');
-            this.classList.add('btn-outline-secondary');
-        } else {
-            surnameInput.value = letter;
-            surnameButtons.forEach(function(b) {
-                b.classList.remove('btn-primary');
-                b.classList.add('btn-outline-secondary');
-            });
-            this.classList.remove('btn-outline-secondary');
-            this.classList.add('btn-primary');
-        }
-        if (surnameAllBtn) {
-            surnameAllBtn.classList.remove('btn-primary');
-            surnameAllBtn.classList.add('btn-outline-secondary');
-        }
-    });
-});
-
 if (surnameAllBtn) {
     surnameAllBtn.addEventListener('click', function() {
-        surnameInput.value = '';
-        surnameButtons.forEach(function(b) {
+        activeSurname = '';
+        document.querySelectorAll('.surname-filter-btn').forEach(function(b) {
             b.classList.remove('btn-primary');
             b.classList.add('btn-outline-secondary');
         });
         this.classList.remove('btn-outline-secondary');
         this.classList.add('btn-primary');
+        filterByLetters();
     });
 }
 
-// Автоперезагрузка при выборе группы из выпадающего списка
-var groupSelect = document.getElementById('group-select');
-if (groupSelect) {
-    groupSelect.addEventListener('change', function() {
-        var url = new URL(window.location.href);
-        url.searchParams.set('group', this.value);
-        // Сбрасываем поиск и буквы при смене группы для чистоты
-        url.searchParams.delete('search');
-        url.searchParams.delete('filter_name');
-        url.searchParams.delete('filter_surname');
-        window.location.href = url.toString();
+// // Обработчик выбора локальной группы
+// var groupSelect = document.getElementById('group-select');
+// if (groupSelect) {
+//     groupSelect.addEventListener('change', function() {
+//         filterByLetters();
+//     });
+// }
+
+// Обработчик выбора глобальной группы
+var cohortSelect = document.getElementById('cohort-select');
+if (cohortSelect) {
+    cohortSelect.addEventListener('change', function() {
+        filterByLetters();
+    });
+}
+
+// === УВЕЛИЧЕНИЕ ЧЕКБОКСОВ ===
+var checkboxes = document.querySelectorAll('.path-mod-studentattendance .generaltable input[type="checkbox"]');
+for (var i = 0; i < checkboxes.length; i++) {
+    var cb = checkboxes[i];
+    cb.style.transform = 'scale(1.3)';
+    cb.style.margin = '0 auto';
+    cb.style.display = 'inline-block';
+    cb.style.verticalAlign = 'middle';
+    cb.style.cursor = 'pointer';
+    cb.style.width = '18px';
+    cb.style.height = '18px';
+    
+    var cell = cb.closest('td');
+    if (cell && !cell.hasAttribute('data-click-bound')) {
+        cell.setAttribute('data-click-bound', 'true');
+        cell.style.cursor = 'pointer';
+        cell.addEventListener('click', function(e) {
+            if (e.target.tagName !== 'INPUT') {
+                var checkbox = this.querySelector('input[type="checkbox"]');
+                if (checkbox) {
+                    checkbox.checked = !checkbox.checked;
+                    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+                }
+            }
+        });
+    }
+}
+
+
+// === СВОРАЧИВАЕМЫЙ БЛОК ОТБОРОВ ===
+var filtersToggle = document.getElementById('filters-toggle');
+var filtersContent = document.getElementById('filters-content');
+
+if (filtersToggle && filtersContent) {
+    // Проверяем, есть ли активные фильтры
+    var hasActiveFilters = (activeName !== '' || activeSurname !== '' || 
+        (document.getElementById('cohort-select') && document.getElementById('cohort-select').value !== '0'));
+    
+    if (hasActiveFilters) {
+        filtersContent.style.display = 'block';
+        filtersToggle.classList.add('filters-open');
+    }
+    
+    filtersToggle.addEventListener('click', function() {
+        if (filtersContent.style.display === 'none' || filtersContent.style.display === '') {
+            filtersContent.style.display = 'block';
+            this.classList.add('filters-open');
+        } else {
+            filtersContent.style.display = 'none';
+            this.classList.remove('filters-open');
+        }
     });
 }
 </script>

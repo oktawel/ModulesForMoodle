@@ -5,6 +5,7 @@
 
 .path-mod-studentattendance .generaltable {
     font-size: 0.95em;
+    
 }
 
 .path-mod-studentattendance .generaltable td {
@@ -152,3 +153,172 @@
     height: 18px;
     margin: 0;
 }
+
+/* ===== УЛУЧШЕНИЯ ТАБЛИЦЫ ===== */
+
+/* Фиксированная ширина колонок */
+.path-mod-studentattendance .generaltable {
+    table-layout: fixed;
+    width: 100%;
+}
+
+/* Первая колонка (Студент) - шире */
+.path-mod-studentattendance .generaltable th:first-child,
+.path-mod-studentattendance .generaltable td:first-child {
+    width: 250px;
+    min-width: 200px;
+    text-align: left;
+    padding-left: 12px;
+}
+
+/* Центрирование заголовка "Студент" */
+.path-mod-studentattendance .generaltable th:first-child {
+    text-align: center;
+}
+
+/* Колонки с датами - фиксированная ширина */
+.path-mod-studentattendance .generaltable th:not(:first-child):not(:last-child),
+.path-mod-studentattendance .generaltable td:not(:first-child):not(:last-child) {
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
+    text-align: center;
+}
+
+/* Последняя колонка (Балл/Процент) */
+.path-mod-studentattendance .generaltable th:last-child,
+.path-mod-studentattendance .generaltable td:last-child {
+    width: 120px;
+    min-width: 100px;
+    text-align: center;
+}
+
+/* Убираем отступы у ячеек заголовка */
+.path-mod-studentattendance .generaltable th {
+    padding: 0 !important;
+    text-align: center;
+    vertical-align: middle;
+}
+
+.path-mod-studentattendance .generaltable th>div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    height: 100%;
+    min-height: 60px;
+    padding: 8px 4px;
+    box-sizing: border-box;
+}
+
+/* Заполняем цветом до самого верха */
+.path-mod-studentattendance .generaltable th>div {
+    height: 100%;
+    min-height: 60px;
+    padding: 8px 4px;
+    box-sizing: border-box;
+}
+
+/* Адаптация для маленьких экранов */
+@media (max-width: 768px) {
+    .path-mod-studentattendance .generaltable {
+        font-size: 0.85em;
+    }
+
+    .path-mod-studentattendance .generaltable th:first-child,
+    .path-mod-studentattendance .generaltable td:first-child {
+        width: 150px;
+        min-width: 120px;
+    }
+
+    .path-mod-studentattendance .generaltable th:not(:first-child):not(:last-child),
+    .path-mod-studentattendance .generaltable td:not(:first-child):not(:last-child) {
+        width: 60px;
+        min-width: 60px;
+        max-width: 60px;
+    }
+}
+
+/* ===== СВОРАЧИВАЕМЫЙ БЛОК ОТБОРОВ ===== */
+.attendance-filters-wrapper {
+    transition: box-shadow 0.2s;
+}
+
+.attendance-filters-wrapper:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.filters-toggle-btn {
+    transition: background-color 0.2s;
+}
+
+.filters-toggle-btn:hover {
+    background: #e9ecef !important;
+}
+
+/* CSS-стрелка вместо emoji */
+.toggle-arrow {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid #6c757d;
+    border-bottom: 2px solid #6c757d;
+    transform: rotate(-45deg);
+    transition: transform 0.3s ease;
+    margin-left: 10px;
+}
+
+/* Поворот стрелки при открытии */
+.filters-open .toggle-arrow {
+    transform: rotate(45deg);
+}
+
+#filters-content {
+    transition: all 0.3s ease;
+}
+
+/* ===== СТИЛИЗАЦИЯ SELECT ===== */
+#cohort-select,
+.form-select {
+    text-align: center;
+    /* padding: 8px 32px 8px 12px; */
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    background-color: #fff;
+    font-size: 14px;
+    color: #495057;
+    cursor: pointer;
+    transition: all 0.2s;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236c757d' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
+}
+
+#cohort-select:hover,
+.form-select:hover {
+    border-color: #4800B4;
+    box-shadow: 0 0 0 0.15rem rgba(72, 0, 180, 0.15);
+}
+
+#cohort-select:focus,
+.form-select:focus {
+    border-color: #4800B4;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(72, 0, 180, 0.25);
+}
+
+/* Лейбл для select */
+.form-label.fw-bold {
+    display: inline-block;
+    margin-right: 10px;
+    margin-bottom: 0;
+    vertical-align: middle;
+    font-size: 14px;
+    color: #495057;
+}
+
+
