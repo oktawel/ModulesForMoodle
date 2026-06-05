@@ -70,82 +70,76 @@ if (!$can_take) {
     $all_sessions = $filtered;
 }
 
-// === ОБРАБОТКА POST (ДО ВЫВОДА HTML!) ===
+// === ОБРАБОТКА POST ===
+// === ОБРАБОТКА POST ===
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $can_take) {
     require_sesskey();
     
     $raw_status = isset($_POST['status']) ? $_POST['status'] : array();
     
-    // Собираем все пары (merged_session_id, student_id) из POST
-    $posted_pairs = array();
     if (!empty($raw_status) && is_array($raw_status)) {
         foreach ($raw_status as $merged_id => $students) {
             if (!is_numeric($merged_id) || !is_array($students)) continue;
+            
+            if (!isset($all_sessions[$merged_id])) continue;
+            $session = $all_sessions[$merged_id];
+            
             foreach ($students as $studentid => $val) {
                 if (!is_numeric($studentid)) continue;
-                $posted_pairs[$merged_id . '-' . $studentid] = ($val === '1') ? 'P' : 'A';
+                
+                // Пропускаем преподавателей
+                if (has_capability('mod/studentattendance:take', $context, $studentid)) {
+                    continue;
+                }
+                
+                $status = ($val === '1') ? 'P' : 'A';
+                
+                // Находим реальную сессию для студента
+                $student_cohorts = cohort_get_user_cohorts($studentid);
+                $student_cohort_ids = array_map(function($c) { return $c->id; }, $student_cohorts);
+                
+                $target_session_id = null;
+                foreach ($session->cohort_sessions as $cs) {
+                    if ($cs->cohortid == 0 || in_array($cs->cohortid, $student_cohort_ids)) {
+                        $target_session_id = $cs->id;
+                        break;
+                    }
+                }
+                
+                if (!$target_session_id) continue;
+                
+                // Сохраняем или обновляем запись
+                $record = $DB->get_record('studentattendance_records',
+                    array('sessionid' => $target_session_id, 'studentid' => $studentid));
+                
+                if ($record) {
+                    if ($record->status !== $status) {
+                        $record->status = $status;
+                        $record->timemodified = time();
+                        $DB->update_record('studentattendance_records', $record);
+                    }
+                } else {
+                    // Создаём запись только если статус "присутствует"
+                    if ($status === 'P') {
+                        $newrecord = new stdClass();
+                        $newrecord->sessionid = $target_session_id;
+                        $newrecord->studentid = $studentid;
+                        $newrecord->status = $status;
+                        $newrecord->timemodified = time();
+                        $DB->insert_record('studentattendance_records', $newrecord);
+                    }
+                    // Если статус 'A' и записи нет — ничего не делаем (отметки нет в БД)
+                }
             }
         }
-    }
-    
-    // Проходим по ВСЕМ отображаемым парам (сессия × студент)
-    foreach ($all_sessions as $merged_id => $session) {
-        foreach ($students as $studentid => $student) {
-            // Пропускаем преподавателей
-            if (has_capability('mod/studentattendance:take', $context, $student)) {
-                continue;
+        
+        // Обновляем оценки
+        if (function_exists('studentattendance_update_all_grades')) {
+            try {
+                studentattendance_update_all_grades($studentattendance);
+            } catch (Exception $e) {
+                error_log("Grade update error: " . $e->getMessage());
             }
-            
-            $pair_key = $merged_id . '-' . $studentid;
-            
-            // Определяем статус: из POST или "отсутствует" по умолчанию
-            $status = isset($posted_pairs[$pair_key]) ? $posted_pairs[$pair_key] : 'A';
-            
-            // Находим реальную сессию для студента
-            $student_cohorts = cohort_get_user_cohorts($studentid);
-            $student_cohort_ids = array_map(function($c) { return $c->id; }, $student_cohorts);
-            
-            $target_session_id = null;
-            foreach ($session->cohort_sessions as $cs) {
-                if ($cs->cohortid == 0 || in_array($cs->cohortid, $student_cohort_ids)) {
-                    $target_session_id = $cs->id;
-                    break;
-                }
-            }
-            
-            if (!$target_session_id) continue;
-            
-            // Сохраняем или обновляем запись
-            $record = $DB->get_record('studentattendance_records',
-                array('sessionid' => $target_session_id, 'studentid' => $studentid));
-            
-            if ($record) {
-                if ($record->status !== $status) {
-                    $record->status = $status;
-                    $record->timemodified = time();
-                    $DB->update_record('studentattendance_records', $record);
-                }
-            } else {
-                // Создаём запись только если статус "присутствует"
-                if ($status === 'P') {
-                    $newrecord = new stdClass();
-                    $newrecord->sessionid = $target_session_id;
-                    $newrecord->studentid = $studentid;
-                    $newrecord->status = $status;
-                    $newrecord->timemodified = time();
-                    $DB->insert_record('studentattendance_records', $newrecord);
-                }
-                // Если "отсутствует" и записи нет — ничего не делаем
-            }
-        }
-    }
-    
-    // Обновляем оценки
-    if (function_exists('studentattendance_update_all_grades')) {
-        try {
-            studentattendance_update_all_grades($studentattendance);
-        } catch (Exception $e) {
-            error_log("Grade update error: " . $e->getMessage());
         }
     }
     
@@ -385,9 +379,10 @@ foreach ($current_sessions as $session) {
         $date_str = html_writer::tag('span', $date_str, array('class' => 'text-danger fw-bold', 'style' => 'font-size: 1.15em;'));
     }
 
-    $bg_color = ($session->weektype === 'N') ? '#e3f2fd' : '#fff8e1';
+    $week_class = ($session->weektype === 'N') ? 'numerator-cell' : 'denominator-cell';
     $table->head[] = html_writer::tag('div', $date_str, [
-        'style' => "background-color: {$bg_color}; width: 100%; min-height: 60px; padding: 8px 4px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; flex-direction: column;"
+        'class' => $week_class,
+        'style' => "width: 100%; height: 100%; min-height: 60px; display: flex; align-items: center; justify-content: center; flex-direction: column;"
     ]);
 }
 
@@ -440,38 +435,32 @@ foreach ($students as $student) {
             $current_status = isset($records[$key]) ? $records[$key] : 'A';
         }
 
-        $bg = ($session->weektype === 'N') ? '#e3f2fd' : '#fff8e1';
+        $week_class = ($session->weektype === 'N') ? 'numerator-cell' : 'denominator-cell';
 
         if ($can_take && $can_mark_this) {
-            // Преподаватель может отмечать этого студента - показываем чекбокс
             $checkbox = html_writer::checkbox(
                 "status[{$session->id}][{$student->id}]", '1',
                 ($current_status == 'P'), '',
                 ['class' => 'form-check-input attendance-checkbox', 'id' => "chk_{$session->id}_{$student->id}"]
             );
             $row[] = html_writer::tag('div', $checkbox, [
-                'class' => 'checkbox-cell',
-                'style' => "background-color: {$bg}; width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center;"
+                'class' => "checkbox-cell {$week_class}"
             ]);
         } else if (!$can_take) {
-            // Студент видит свой статус - показываем галочку или крестик
-            $status_icon = ($current_status == 'P') ? '✔' : '✘';
-            $status_color = ($current_status == 'P') ? '#28a745' : '#dc3545';
+            if ($current_status == 'P') {
+                $icon_html = $OUTPUT->pix_icon('present', 'Присутствует', 'studentattendance', 
+                    array('class' => 'attendance-icon'));
+            } else {
+                $icon_html = $OUTPUT->pix_icon('absent', 'Отсутствует', 'studentattendance', 
+                    array('class' => 'attendance-icon'));
+            }
             
-            $row[] = html_writer::tag('div', 
-                html_writer::tag('span', $status_icon, [
-                    'style' => "color: {$status_color}; font-size: 1.2em; font-weight: bold;"
-                ]),
-                [
-                    'class' => 'checkbox-cell',
-                    'style' => "background-color: {$bg}; width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center;"
-                ]
-            );
+            $row[] = html_writer::tag('div', $icon_html, [
+                'class' => "checkbox-cell {$week_class}"
+            ]);
         } else {
-            // Преподаватель НЕ может отмечать этого студента (другая группа) - пустая ячейка
             $row[] = html_writer::tag('div', '', [
-                'class' => 'checkbox-cell',
-                'style' => "background-color: {$bg}; width: 100%; min-height: 40px; display: flex; align-items: center; justify-content: center;"
+                'class' => "checkbox-cell {$week_class}"
             ]);
         }
     }
@@ -504,6 +493,150 @@ echo html_writer::end_tag('form');
 // === JAVASCRIPT ===
 $js = <<<EOD
 <script>
+// === localStorage для сохранения отметок между страницами ===
+var STORAGE_KEY = 'attendance_{$cm->id}';
+
+// Загружаем сохранённые отметки из localStorage
+function loadSavedAttendance() {
+    var saved = localStorage.getItem(STORAGE_KEY);
+    return saved ? JSON.parse(saved) : {};
+}
+
+// Сохраняем отметки в localStorage
+function saveAttendanceToStorage(data) {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+}
+
+// Получаем начальное состояние чекбоксов (из БД)
+function getInitialState() {
+    var initialState = {};
+    var checkboxes = document.querySelectorAll('.attendance-checkbox');
+    
+    checkboxes.forEach(function(cb) {
+        var name = cb.getAttribute('name');
+        var match = name.match(/status\\[(\\d+)\\]\\[(\\d+)\\]/);
+        if (match) {
+            var key = match[1] + '-' + match[2];
+            initialState[key] = cb.checked ? '1' : '0';
+        }
+    });
+    
+    return initialState;
+}
+
+// Применяем сохранённые отметки из localStorage к чекбоксам
+function applySavedAttendance() {
+    var saved = loadSavedAttendance();
+    var checkboxes = document.querySelectorAll('.attendance-checkbox');
+    
+    checkboxes.forEach(function(cb) {
+        var name = cb.getAttribute('name');
+        var match = name.match(/status\\[(\\d+)\\]\\[(\\d+)\\]/);
+        if (match) {
+            var key = match[1] + '-' + match[2];
+            if (saved.hasOwnProperty(key)) {
+                cb.checked = (saved[key] === '1');
+            }
+        }
+    });
+}
+
+// Проверяем, есть ли несохранённые изменения
+function hasUnsavedChanges() {
+    var saved = loadSavedAttendance();
+    var initialState = getInitialState();
+    var checkboxes = document.querySelectorAll('.attendance-checkbox');
+    var hasChanges = false;
+    
+    checkboxes.forEach(function(cb) {
+        var name = cb.getAttribute('name');
+        var match = name.match(/status\\[(\\d+)\\]\\[(\\d+)\\]/);
+        if (match) {
+            var key = match[1] + '-' + match[2];
+            var currentState = cb.checked ? '1' : '0';
+            var originalState = initialState[key] || '0';
+            var savedState = saved[key];
+            
+            // Если есть сохранённое в localStorage состояние
+            if (savedState !== undefined) {
+                if (savedState !== currentState) {
+                    hasChanges = true;
+                }
+            } else if (currentState !== originalState) {
+                // Если изменили относительно начального состояния
+                hasChanges = true;
+            }
+        }
+    });
+    
+    return hasChanges;
+}
+
+// Считаем количество несохранённых изменений
+function countUnsavedChanges() {
+    var saved = loadSavedAttendance();
+    var initialState = getInitialState();
+    var checkboxes = document.querySelectorAll('.attendance-checkbox');
+    var count = 0;
+    
+    checkboxes.forEach(function(cb) {
+        var name = cb.getAttribute('name');
+        var match = name.match(/status\\[(\\d+)\\]\\[(\\d+)\\]/);
+        if (match) {
+            var key = match[1] + '-' + match[2];
+            var currentState = cb.checked ? '1' : '0';
+            var originalState = initialState[key] || '0';
+            var savedState = saved[key];
+            
+            // Если есть изменение относительно начального состояния
+            if (currentState !== originalState) {
+                count++;
+            }
+        }
+    });
+    
+    return count;
+}
+
+// Сохраняем изменение чекбокса в localStorage
+function saveCheckboxToStorage(checkbox) {
+    var saved = loadSavedAttendance();
+    var name = checkbox.getAttribute('name');
+    var match = name.match(/status\\[(\\d+)\\]\\[(\\d+)\\]/);
+    if (match) {
+        var key = match[1] + '-' + match[2];
+        // Сохраняем ВСЕ изменения, включая снятие отметки
+        saved[key] = checkbox.checked ? '1' : '0';
+        saveAttendanceToStorage(saved);
+        updateSaveIndicator();
+    }
+}
+
+// Собираем все изменения для отправки на сервер
+function collectAllChanges() {
+    var saved = loadSavedAttendance();
+    var changes = {};
+    
+    // Берём ВСЕ изменения из localStorage (со всех страниц)
+    for (var key in saved) {
+        changes[key] = saved[key];
+    }
+    
+    // Добавляем текущие значения чекбоксов (они могут быть изменены)
+    var checkboxes = document.querySelectorAll('.attendance-checkbox');
+    checkboxes.forEach(function(cb) {
+        var name = cb.getAttribute('name');
+        var match = name.match(/status\[(\d+)\]\[(\d+)\]/);
+        if (match) {
+            var key = match[1] + '-' + match[2];
+            changes[key] = cb.checked ? '1' : '0';
+        }
+    });
+    
+    return changes;
+}
+
+// === ЛОКАЛЬНЫЙ ПОИСК ПО ТЕКСТУ ===
 (function() {
     var searchInput = document.getElementById('student-search');
     var clearButton = document.getElementById('student-search-clear');
@@ -570,6 +703,7 @@ $js = <<<EOD
     if (searchInput.value !== '') filterStudentsLocal();
 })();
 
+// === ФИЛЬТРАЦИЯ ПО БУКВАМ ===
 var activeName = '';
 var activeSurname = '';
 
@@ -710,7 +844,7 @@ if (cohortSelect) {
     });
 }
 
-// Сворачиваемый блок отборов
+// === СВОРАЧИВАЕМЫЙ БЛОК ОТБОРОВ ===
 var filtersToggle = document.getElementById('filters-toggle');
 var filtersContent = document.getElementById('filters-content');
 
@@ -734,13 +868,17 @@ if (filtersToggle && filtersContent) {
     });
 }
 
-// Увеличение чекбоксов
+// === УВЕЛИЧЕНИЕ ЧЕКБОКСОВ + СОХРАНЕНИЕ В localStorage ===
 var checkboxes = document.querySelectorAll('.path-mod-studentattendance .generaltable input[type="checkbox"]');
 for (var i = 0; i < checkboxes.length; i++) {
     var cb = checkboxes[i];
     cb.style.transform = 'scale(1.3)';
     cb.style.margin = '0 auto';
     cb.style.cursor = 'pointer';
+
+    cb.addEventListener('change', function() {
+        saveCheckboxToStorage(this);
+    });
 
     var cell = cb.closest('td');
     if (cell && !cell.hasAttribute('data-click-bound')) {
@@ -756,6 +894,70 @@ for (var i = 0; i < checkboxes.length; i++) {
             }
         });
     }
+}
+
+// === ПРИМЕНЯЕМ СОХРАНЁННЫЕ ОТМЕТКИ ПРИ ЗАГРУЗКЕ ===
+applySavedAttendance();
+
+// === ИНДИКАТОР НЕСОХРАНЁННЫХ ИЗМЕНЕНИЙ (БАДЖ ПОСЛЕ КНОПКИ) ===
+function updateSaveIndicator() {
+    var count = countUnsavedChanges();
+    var badge = document.getElementById('unsaved-badge');
+    var saveBtn = document.querySelector('button[type="submit"]');
+    
+    if (!saveBtn) return;
+    
+    if (count > 0) {
+        if (!badge) {
+            badge = document.createElement('span');
+            badge.id = 'unsaved-badge';
+            badge.style.cssText = 'display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 22px; margin-left: 10px; padding: 0 6px; background: #ffc107; color: #000; border-radius: 50%; font-size: 12px; font-weight: bold; vertical-align: middle;';
+            saveBtn.parentNode.insertBefore(badge, saveBtn.nextSibling);
+        }
+        badge.textContent = count;
+        badge.style.display = 'inline-flex';
+    } else {
+        if (badge) {
+            badge.style.display = 'none';
+        }
+    }
+}
+
+// Показываем индикатор при загрузке
+updateSaveIndicator();
+
+// === ПЕРЕХВАТЫВАЕМ ОТПРАВКУ ФОРМЫ ===
+var form = document.querySelector('form[method="post"]');
+if (form) {
+    form.addEventListener('submit', function(e) {
+        // Собираем ВСЕ изменения из localStorage (со всех страниц)
+        var saved = loadSavedAttendance();
+        
+        // Удаляем старые чекбоксы из формы
+        var oldCheckboxes = form.querySelectorAll('input[name^="status["]');
+        oldCheckboxes.forEach(function(cb) {
+            cb.remove();
+        });
+        
+        // Добавляем скрытые поля со ВСЕМИ изменениями из localStorage
+        for (var key in saved) {
+            var match = key.match(/^(\d+)-(\d+)$/);
+            if (match) {
+                var sessionId = match[1];
+                var studentId = match[2];
+                var value = saved[key];
+                
+                var hidden = document.createElement('input');
+                hidden.type = 'hidden';
+                hidden.name = 'status[' + sessionId + '][' + studentId + ']';
+                hidden.value = value;
+                form.appendChild(hidden);
+            }
+        }
+        
+        // Очищаем localStorage после отправки
+        localStorage.removeItem(STORAGE_KEY);
+    });
 }
 </script>
 EOD;

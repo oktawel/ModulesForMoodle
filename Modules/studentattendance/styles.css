@@ -1,60 +1,218 @@
+/* ===== ОБЩИЕ СТИЛИ ТАБЛИЦЫ ===== */
+.path-mod-studentattendance .generaltable {
+    table-layout: fixed;
+    width: 100%;
+    font-size: 0.95em;
+    border-collapse: collapse;
+    border-spacing: 0;
+}
+
+.path-mod-studentattendance .generaltable th,
+.path-mod-studentattendance .generaltable td {
+    padding: 0 !important;
+    margin: 0 !important;
+    text-align: center;
+    vertical-align: middle;
+    border: 1px solid #E8DAEF !important;
+}
+
 .path-mod-studentattendance .custom-select {
     min-width: 120px;
     font-size: 0.9em;
 }
 
-.path-mod-studentattendance .generaltable {
-    font-size: 0.95em;
-    
+/* ===== ЦВЕТА ЯЧЕЕК (ЧИСЛИТЕЛЬ/ЗНАМЕНАТЕЛЬ) ===== */
+.path-mod-studentattendance .generaltable .numerator-cell {
+    background-color: #F5EEF8 !important;
 }
 
-.path-mod-studentattendance .generaltable td {
-    text-align: center;
+.path-mod-studentattendance .generaltable .denominator-cell {
+    background-color: #FADBD8 !important;
+}
+
+/* ===== ЯЧЕЙКИ И ЗАГОЛОВКИ ===== */
+.path-mod-studentattendance .generaltable th>div,
+.path-mod-studentattendance .generaltable td>div {
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+.path-mod-studentattendance .generaltable th {
     vertical-align: middle;
-    padding: 0px;
+    text-align: center;
 }
 
-.generaltable th{
-    padding: 0px;
+.path-mod-studentattendance .generaltable th>div {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    min-height: 60px;
+    padding: 12px 4px !important;
 }
 
-.generaltable td {
-    padding: 0px;
-}
-
+/* ===== ШИРИНА КОЛОНОК ===== */
+.path-mod-studentattendance .generaltable th:first-child,
 .path-mod-studentattendance .generaltable td:first-child {
-    text-align: left;
-    font-weight: bold;
+    width: 250px;
+    min-width: 200px;
+    text-align: center;
+    padding-left: 12px !important;
 }
 
-/* ===== УВЕЛИЧЕННЫЕ ЧЕКБОКСЫ (УСИЛЕННЫЙ СЕЛЕКТОР) ===== */
+.path-mod-studentattendance .generaltable th:first-child {
+    text-align: center;
+}
+
+.path-mod-studentattendance .generaltable th:not(:first-child):not(:last-child),
+.path-mod-studentattendance .generaltable td:not(:first-child):not(:last-child) {
+    width: 80px;
+    min-width: 80px;
+    max-width: 80px;
+    text-align: center;
+}
+
+.path-mod-studentattendance .generaltable th:last-child,
+.path-mod-studentattendance .generaltable td:last-child {
+    width: 120px;
+    min-width: 100px;
+    text-align: center;
+}
+
+/* ===== ЧЕКБОКСЫ ===== */
+.path-mod-studentattendance .generaltable .checkbox-cell {
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    transition: filter 0.2s;
+}
+
+.path-mod-studentattendance .generaltable .checkbox-cell:hover {
+    filter: brightness(0.95);
+}
+
 .path-mod-studentattendance .generaltable input[type="checkbox"].form-check-input,
 .path-mod-studentattendance .generaltable input[type="checkbox"].attendance-checkbox {
     transform: scale(1.4);
-    margin: 0 auto;
+    margin: 0;
     cursor: pointer;
     width: 18px;
     height: 18px;
     display: inline-block;
     vertical-align: middle;
-    position: relative;
-    top: 0;
 }
 
-/* Дополнительное увеличение для мышки */
-.path-mod-studentattendance .generaltable .checkbox-cell {
-    vertical-align: middle;
+/* ===== ИКОНКИ ПОСЕЩАЕМОСТИ ===== */
+.path-mod-studentattendance .attendance-icon {
+    width: 24px;
+    height: 24px;
+    display: block;
+}
+
+/* ===== АДАПТИВНОСТЬ ===== */
+@media (max-width: 768px) {
+    .path-mod-studentattendance .generaltable {
+        font-size: 0.85em;
+    }
+
+    .path-mod-studentattendance .generaltable th:first-child,
+    .path-mod-studentattendance .generaltable td:first-child {
+        width: 150px;
+        min-width: 120px;
+    }
+
+    .path-mod-studentattendance .generaltable th:not(:first-child):not(:last-child),
+    .path-mod-studentattendance .generaltable td:not(:first-child):not(:last-child) {
+        width: 60px;
+        min-width: 60px;
+        max-width: 60px;
+    }
+}
+
+/* ===== СВОРАЧИВАЕМЫЙ БЛОК ОТБОРОВ ===== */
+.attendance-filters-wrapper {
+    transition: box-shadow 0.2s;
+}
+
+.attendance-filters-wrapper:hover {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.filters-toggle-btn {
+    transition: background-color 0.2s;
+}
+
+.filters-toggle-btn:hover {
+    background: #e9ecef !important;
+}
+
+.toggle-arrow {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-right: 2px solid #6c757d;
+    border-bottom: 2px solid #6c757d;
+    transform: rotate(-45deg);
+    transition: transform 0.3s ease;
+    margin-left: 10px;
+}
+
+.filters-open .toggle-arrow {
+    transform: rotate(45deg);
+}
+
+#filters-content {
+    transition: all 0.3s ease;
+}
+
+/* ===== СТИЛИЗАЦИЯ SELECT ===== */
+#cohort-select,
+.form-select {
     text-align: center;
-    padding: 10px;
-}
-
-/* Эффект при наведении на ячейку с чекбоксом */
-.path-mod-studentattendance .generaltable .checkbox-cell:hover {
-    background-color: rgba(72, 0, 180, 0.05);
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    background-color: #fff;
+    font-size: 14px;
+    color: #495057;
     cursor: pointer;
+    transition: all 0.2s;
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236c757d' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px;
 }
 
-/* ===== ПОИСК СТУДЕНТОВ (УЛУЧШЕННЫЙ) ===== */
+#cohort-select:hover,
+.form-select:hover {
+    border-color: #4800B4;
+    box-shadow: 0 0 0 0.15rem rgba(72, 0, 180, 0.15);
+}
+
+#cohort-select:focus,
+.form-select:focus {
+    border-color: #4800B4;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(72, 0, 180, 0.25);
+}
+
+.form-label.fw-bold {
+    display: inline-block;
+    margin-right: 10px;
+    margin-bottom: 0;
+    vertical-align: middle;
+    font-size: 14px;
+    color: #495057;
+}
+
+/* ===== ПОИСК СТУДЕНТОВ ===== */
 .student-search-container {
     margin-bottom: 25px;
     padding: 15px;
@@ -107,7 +265,7 @@
     font-weight: 500;
 }
 
-/* Подсветка при поиске */
+/* ===== ПОДСВЕТКА ПРИ ПОИСКЕ ===== */
 .path-mod-studentattendance .generaltable tr.student-row-matched {
     display: table-row;
     background-color: #fff;
@@ -117,208 +275,9 @@
     display: none;
 }
 
-/* Подсветка найденного текста */
 .search-highlight {
     background-color: #ffeb3b;
     padding: 0 2px;
     border-radius: 3px;
     font-weight: bold;
 }
-
-/* Убираем все отступы у ячеек таблицы посещаемости */
-.path-mod-studentattendance .generaltable td,
-.path-mod-studentattendance .generaltable th {
-    padding: 0 !important;
-    margin: 0 !important;
-    border: 1px solid #dee2e6;
-    /* Возвращаем границы, так как убрали padding */
-}
-
-/* Ячейка с чекбоксом теперь сама является контейнером */
-.path-mod-studentattendance .generaltable .checkbox-cell {
-    cursor: pointer;
-    transition: background-color 0.2s;
-}
-
-/* Эффект при наведении должен быть поверх цвета недели */
-.path-mod-studentattendance .generaltable .checkbox-cell:hover {
-    filter: brightness(0.95);
-}
-
-/* Увеличенные чекбоксы остаются без изменений */
-.path-mod-studentattendance .generaltable input[type="checkbox"].attendance-checkbox {
-    transform: scale(1.4);
-    cursor: pointer;
-    width: 18px;
-    height: 18px;
-    margin: 0;
-}
-
-/* ===== УЛУЧШЕНИЯ ТАБЛИЦЫ ===== */
-
-/* Фиксированная ширина колонок */
-.path-mod-studentattendance .generaltable {
-    table-layout: fixed;
-    width: 100%;
-}
-
-/* Первая колонка (Студент) - шире */
-.path-mod-studentattendance .generaltable th:first-child,
-.path-mod-studentattendance .generaltable td:first-child {
-    width: 250px;
-    min-width: 200px;
-    text-align: left;
-    padding-left: 12px;
-}
-
-/* Центрирование заголовка "Студент" */
-.path-mod-studentattendance .generaltable th:first-child {
-    text-align: center;
-}
-
-/* Колонки с датами - фиксированная ширина */
-.path-mod-studentattendance .generaltable th:not(:first-child):not(:last-child),
-.path-mod-studentattendance .generaltable td:not(:first-child):not(:last-child) {
-    width: 80px;
-    min-width: 80px;
-    max-width: 80px;
-    text-align: center;
-}
-
-/* Последняя колонка (Балл/Процент) */
-.path-mod-studentattendance .generaltable th:last-child,
-.path-mod-studentattendance .generaltable td:last-child {
-    width: 120px;
-    min-width: 100px;
-    text-align: center;
-}
-
-/* Убираем отступы у ячеек заголовка */
-.path-mod-studentattendance .generaltable th {
-    padding: 0 !important;
-    text-align: center;
-    vertical-align: middle;
-}
-
-.path-mod-studentattendance .generaltable th>div {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-direction: column;
-    height: 100%;
-    min-height: 60px;
-    padding: 8px 4px;
-    box-sizing: border-box;
-}
-
-/* Заполняем цветом до самого верха */
-.path-mod-studentattendance .generaltable th>div {
-    height: 100%;
-    min-height: 60px;
-    padding: 8px 4px;
-    box-sizing: border-box;
-}
-
-/* Адаптация для маленьких экранов */
-@media (max-width: 768px) {
-    .path-mod-studentattendance .generaltable {
-        font-size: 0.85em;
-    }
-
-    .path-mod-studentattendance .generaltable th:first-child,
-    .path-mod-studentattendance .generaltable td:first-child {
-        width: 150px;
-        min-width: 120px;
-    }
-
-    .path-mod-studentattendance .generaltable th:not(:first-child):not(:last-child),
-    .path-mod-studentattendance .generaltable td:not(:first-child):not(:last-child) {
-        width: 60px;
-        min-width: 60px;
-        max-width: 60px;
-    }
-}
-
-/* ===== СВОРАЧИВАЕМЫЙ БЛОК ОТБОРОВ ===== */
-.attendance-filters-wrapper {
-    transition: box-shadow 0.2s;
-}
-
-.attendance-filters-wrapper:hover {
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.filters-toggle-btn {
-    transition: background-color 0.2s;
-}
-
-.filters-toggle-btn:hover {
-    background: #e9ecef !important;
-}
-
-/* CSS-стрелка вместо emoji */
-.toggle-arrow {
-    display: inline-block;
-    width: 10px;
-    height: 10px;
-    border-right: 2px solid #6c757d;
-    border-bottom: 2px solid #6c757d;
-    transform: rotate(-45deg);
-    transition: transform 0.3s ease;
-    margin-left: 10px;
-}
-
-/* Поворот стрелки при открытии */
-.filters-open .toggle-arrow {
-    transform: rotate(45deg);
-}
-
-#filters-content {
-    transition: all 0.3s ease;
-}
-
-/* ===== СТИЛИЗАЦИЯ SELECT ===== */
-#cohort-select,
-.form-select {
-    text-align: center;
-    /* padding: 8px 32px 8px 12px; */
-    border: 1px solid #ced4da;
-    border-radius: 6px;
-    background-color: #fff;
-    font-size: 14px;
-    color: #495057;
-    cursor: pointer;
-    transition: all 0.2s;
-    appearance: none;
-    -webkit-appearance: none;
-    -moz-appearance: none;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236c757d' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
-    background-repeat: no-repeat;
-    background-position: right 12px center;
-    background-size: 12px;
-}
-
-#cohort-select:hover,
-.form-select:hover {
-    border-color: #4800B4;
-    box-shadow: 0 0 0 0.15rem rgba(72, 0, 180, 0.15);
-}
-
-#cohort-select:focus,
-.form-select:focus {
-    border-color: #4800B4;
-    outline: 0;
-    box-shadow: 0 0 0 0.2rem rgba(72, 0, 180, 0.25);
-}
-
-/* Лейбл для select */
-.form-label.fw-bold {
-    display: inline-block;
-    margin-right: 10px;
-    margin-bottom: 0;
-    vertical-align: middle;
-    font-size: 14px;
-    color: #495057;
-}
-
-

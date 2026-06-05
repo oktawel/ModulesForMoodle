@@ -64,6 +64,10 @@ function studentattendance_add_instance($data, $mform) {
         }
     }
     
+    // Получаем полный объект из БД для корректного обновления оценок
+    // $attendance = $DB->get_record('studentattendance', array('id' => $id), '*', MUST_EXIST);
+    // studentattendance_update_grades($attendance);
+
     return $id;
 }
 
@@ -121,6 +125,12 @@ function studentattendance_update_instance($data, $mform) {
         }
     }
     
+    // Обновляем оценки только если оценивание включено
+    if (!empty($data->grade_enabled)) {
+        $attendance = $DB->get_record('studentattendance', array('id' => $data->id), '*', MUST_EXIST);
+        studentattendance_update_grades($attendance);
+    }
+
     return true;
 }
 
@@ -138,24 +148,15 @@ function studentattendance_delete_instance($id) {
 function studentattendance_get_user_grades($studentattendance, $userid = 0) {
     global $DB;
 
-    if (empty($studentattendance->grade_enabled) || empty($studentattendance->max_grade)) {
-        return false;
-    }
-
-    $grades = array();
-    $max_grade = $studentattendance->max_grade;
-
     $cm = get_coursemodule_from_instance('studentattendance', $studentattendance->id);
     if (!$cm) {
-        return false;
+        return array(); // Возвращаем пустой массив вместо false
     }
     
     $context = context_module::instance($cm->id);
     
-    // Получаем всех enrolled пользователей
     $allusers = get_enrolled_users($context, '', 0, 'u.id', null, 0, 0, true);
     
-    // Фильтруем: оставляем только студентов
     $students = array();
     foreach ($allusers as $user) {
         if (has_capability('mod/studentattendance:take', $context, $user->id)) {
@@ -166,21 +167,24 @@ function studentattendance_get_user_grades($studentattendance, $userid = 0) {
     
     if ($userid != 0) {
         if (!isset($students[$userid])) {
-            return false;
+            return array(); // Возвращаем пустой массив вместо false
         }
         $students = array($userid => $students[$userid]);
     }
 
     if (empty($students)) {
-        return false;
+        return array();
     }
 
     $all_sessions = $DB->get_records('studentattendance_sessions', 
         array('attendanceid' => $studentattendance->id));
 
     if (empty($all_sessions)) {
-        return false;
+        return array();
     }
+
+    $grades = array();
+    $max_grade = (float)($studentattendance->max_grade ?? 0);
 
     foreach ($students as $student) {
         if (!$student) continue;
@@ -211,15 +215,19 @@ function studentattendance_get_user_grades($studentattendance, $userid = 0) {
         
         $present_count = $DB->count_records_sql($sql, array_merge($inparams, array('userid' => $student->id)));
 
-        $percentage = ($present_count / $total_sessions) * 100;
-        $raw_grade = ($percentage / 100) * $max_grade;
+        $percentage = round(($present_count / $total_sessions) * 100, 2);
         
-        $grade = round($raw_grade * 4) / 4;
-        $grade = round($grade, 2);
+        $grade = 0.0;
+        if (!empty($studentattendance->grade_enabled) && $max_grade > 0) {
+            $raw_grade = ($percentage / 100) * $max_grade;
+            $grade = round($raw_grade * 4) / 4;
+            $grade = round($grade, 2);
+        }
 
-        $grades[$student->id] = new stdClass();
-        $grades[$student->id]->userid = $student->id;
-        $grades[$student->id]->rawgrade = $grade;
+        $grade_obj = new stdClass();
+        $grade_obj->userid = (int)$student->id;
+        $grade_obj->rawgrade = (float)$grade;
+        $grades[$student->id] = $grade_obj;
     }
 
     return $grades;
@@ -229,42 +237,37 @@ function studentattendance_update_grades($studentattendance, $userid = 0, $nulli
     global $CFG;
     require_once($CFG->libdir . '/gradelib.php');
 
-    // Если оценивание выключено - удаляем элемент из журнала оценок
-    if (!$studentattendance->grade_enabled || empty($studentattendance->max_grade)) {
+    // Если оценивание выключено - удаляем элемент
+    if (empty($studentattendance->grade_enabled)) {
         grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
             'studentattendance', $studentattendance->id, 0, null, 
             array('deleted' => 1));
         return GRADE_UPDATE_OK;
     }
 
+    $max_grade = (float)($studentattendance->max_grade ?? 0);
+    
+    if ($max_grade <= 0) {
+        return GRADE_UPDATE_OK;
+    }
+
     $grades = studentattendance_get_user_grades($studentattendance, $userid);
     
-    if ($grades && !empty($grades)) {
-        // Обновляем журнал оценок
-        $result = grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
-            'studentattendance', $studentattendance->id, 0, $grades,
-            array(
-                'itemname' => $studentattendance->name,
-                'gradetype' => GRADE_TYPE_VALUE,
-                'grademax' => $studentattendance->max_grade,
-                'grademin' => 0,
-            )
-        );
-        
-        return $result;
-    } else if ($nullifnone) {
-        // Если оценок нет, создаем пустой элемент
-        $updateitem = new stdClass();
-        $updateitem->itemname = $studentattendance->name;
-        $updateitem->gradetype = GRADE_TYPE_VALUE;
-        $updateitem->grademax = $studentattendance->max_grade;
-        $updateitem->grademin = 0;
-        
-        return grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
-            'studentattendance', $studentattendance->id, 0, null, $updateitem);
+    if (empty($grades)) {
+        return GRADE_UPDATE_OK;
     }
     
-    return GRADE_UPDATE_OK;
+    $result = grade_update('mod/studentattendance', $studentattendance->course, 'mod', 
+        'studentattendance', $studentattendance->id, 0, $grades,
+        array(
+            'itemname' => $studentattendance->name,
+            'gradetype' => GRADE_TYPE_VALUE,
+            'grademax' => $max_grade,
+            'grademin' => 0,
+        )
+    );
+    
+    return $result;
 }
 
 function studentattendance_update_all_grades($studentattendance) {
