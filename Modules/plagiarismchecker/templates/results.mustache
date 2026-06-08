@@ -1,0 +1,37 @@
+<h4>Результаты проверки</h4>
+
+<table class="table table-striped">
+
+    <thead>
+
+        <tr>
+            <th>Студент</th>
+            <th>Сходство (%)</th>
+        </tr>
+
+    </thead>
+
+    <tbody>
+
+    {{#results}}
+
+        <tr>
+            <td>{{studentname}}</td>
+            <td>{{similarity}}</td>
+        </tr>
+
+    {{/results}}
+
+    {{^results}}
+
+        <tr>
+            <td colspan="2">
+                Совпадений не найдено
+            </td>
+        </tr>
+
+    {{/results}}
+
+    </tbody>
+
+</table>

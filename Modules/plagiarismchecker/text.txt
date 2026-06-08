@@ -1,0 +1,117 @@
+<style>
+/* Убирает жирное начертание у названия сайта в шапке */
+#page-header h1.h2 {
+    font-weight: 300 !important;
+    font-size: 2.34375rem;
+}
+.course-section {
+    font-weight: 300 !important;
+}
+/* Убирает рамку у блока раздела курса */
+.course-section .section-item {
+    border: none !important; /* Основная команда для удаления рамки */
+}
+
+.course-section {
+    border-bottom-width: 10px;
+    border-bottom-style: solid;
+    border-bottom-color: #6E76C1;
+
+.btn.btn-icon.icons-collapse-expand {
+    color: #4800B4;
+    background-color: #ffffff;
+}
+
+h3, .h3 {
+    font-size: 1.640625rem;
+}
+
+h2, .h2 {
+   font-weight: 300 !important;
+    font-size: 5.34375rem !important;
+}
+
+.activityiconcontainer.smaller .activityicon {
+    width: 24px !important;
+    height: 24px !important;
+    max-width: 24px !important;
+    max-height: 24px !important;
+}
+
+/* This changes the background colour */
+.pagelayout-login #page,body{
+background-color: #6E76C1;
+}
+
+</style>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

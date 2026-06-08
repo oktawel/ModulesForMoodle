@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<XMLDB PATH="local/plagiarismchecker/db"
+       VERSION="2026060600"
+       COMMENT="XMLDB file for local_plagiarismchecker"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:noNamespaceSchemaLocation="../../../lib/xmldb/xmldb.xsd">
+
+    <TABLES>
+
+        <TABLE NAME="local_plagiarism_results"
+               COMMENT="Similarity check results">
+
+            <FIELDS>
+
+                <FIELD NAME="id"
+                       TYPE="int"
+                       LENGTH="10"
+                       NOTNULL="true"
+                       SEQUENCE="true"/>
+
+                <FIELD NAME="assignid"
+                       TYPE="int"
+                       LENGTH="10"
+                       NOTNULL="true"/>
+
+                <FIELD NAME="userid1"
+                       TYPE="int"
+                       LENGTH="10"
+                       NOTNULL="true"/>
+
+                <FIELD NAME="userid2"
+                       TYPE="int"
+                       LENGTH="10"
+                       NOTNULL="true"/>
+
+                <!-- <FIELD NAME="sourcefile"
+                     TYPE="char"
+                     LENGTH="255"
+                     NOTNULL="false"/>
+
+              <FIELD NAME="comparefile"
+                     TYPE="char"
+                     LENGTH="255"
+                     NOTNULL="false"/> -->
+
+                <FIELD NAME="similarity"
+                       TYPE="number"
+                       LENGTH="5"
+                       DECIMALS="2"
+                       NOTNULL="true"
+                       DEFAULT="0"/>
+
+                <FIELD NAME="timecreated"
+                       TYPE="int"
+                       LENGTH="10"
+                       NOTNULL="true"/>
+
+                <FIELD NAME="timemodified"
+                       TYPE="int"
+                       LENGTH="10"
+                       NOTNULL="true"/>
+
+            </FIELDS>
+
+            <KEYS>
+
+                <KEY NAME="primary"
+                     TYPE="primary"
+                     FIELDS="id"/>
+
+            </KEYS>
+
+            <INDEXES>
+
+                <INDEX NAME="assignid_idx"
+                       UNIQUE="false"
+                       FIELDS="assignid"/>
+
+                <INDEX NAME="userid1_idx"
+                       UNIQUE="false"
+                       FIELDS="userid1"/>
+
+                <INDEX NAME="userid2_idx"
+                       UNIQUE="false"
+                       FIELDS="userid2"/>
+
+            </INDEXES>
+
+        </TABLE>
+
+    </TABLES>
+
+</XMLDB>
